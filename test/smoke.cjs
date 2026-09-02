@@ -406,6 +406,15 @@ app.whenReady().then(async () => {
    * whether the machine happens to be playing anything is not something a test
    * can control, so the levels themselves are reported but not asserted.
    */
+  /*
+   * CI runners have no audio endpoint, so loopback capture cannot succeed
+   * there. Skipping is honest about what was and was not verified, rather than
+   * either failing the build or silently pretending the check passed.
+   */
+  if (process.env.DOMINO_SMOKE_NO_AUDIO) {
+    console.log('\nSystem audio loopback: SKIPPED (DOMINO_SMOKE_NO_AUDIO set)');
+    console.log('  note  audio capture is not verified on this machine');
+  } else {
   console.log('\nSystem audio loopback:');
   const capture = await win.webContents.executeJavaScript(`
     (async () => {
@@ -511,6 +520,7 @@ app.whenReady().then(async () => {
       responsive,
       responsive ? undefined : 'levels were static - host may be silent and have no output device',
     );
+  }
   }
 
   /*

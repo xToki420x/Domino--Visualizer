@@ -39,10 +39,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Boots the real app, loads every bundled visual, and checks each one
-      # compiles and renders. Needs a display, so run it under a virtual one.
+      # Boots the real app and checks every bundled visual compiles and
+      # renders. The runner has no audio endpoint, so the loopback assertions
+      # are skipped there; they are a hard gate on a real machine.
       - name: Smoke test
         run: npm run test:smoke
+        env:
+          DOMINO_SMOKE_NO_AUDIO: '1'
 
       - name: Package
         run: npx electron-builder --win --publish never
