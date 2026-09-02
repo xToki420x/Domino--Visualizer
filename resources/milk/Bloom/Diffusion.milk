@@ -1,0 +1,93 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.200
+fDecay=0.985
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.000
+nVideoEchoOrientation=0
+nWaveMode=5
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=0
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.755
+fWaveScale=1.200
+fWaveSmoothing=0.700
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=1.000
+fWarpScale=1.300
+fZoomExponent=1.000
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_dx=0.000
+mv_dy=0.000
+mv_l=0.900
+mv_r=1.000
+mv_g=1.000
+mv_b=1.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.003
+rot=0.000
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.250
+sx=1.000
+sy=1.000
+wave_r=1.000
+wave_g=1.000
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_r=0.000
+ob_g=0.000
+ob_b=0.000
+ob_a=0.000
+ib_size=0.000
+ib_r=0.250
+ib_g=0.250
+ib_b=0.250
+ib_a=0.000
+per_frame_1=q1 = treb_att;
+per_frame_2=q2 = bass_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 1.0015 + -0.0080 * q1;
+per_frame_6=rot = 0.0050 * sin(time * 0.0981);
+per_frame_7=warp = 0.15 + 0.35 * q2;
+per_frame_8=decay = 0.9850;
+per_frame_9=hue = time * 0.2085 + 1.538;
+per_frame_10=wave_r = 0.150 * (0.55 + 0.45 * sin(hue));
+per_frame_11=wave_g = 0.250 * (0.55 + 0.45 * sin(hue + 2.09));
+per_frame_12=wave_b = 0.550 * (0.55 + 0.45 * sin(hue + 4.19));
+per_pixel_1=zoom = zoom + 0.003 * sin(rad * 13.0000 + time * 0.7360);
+comp_1=`shader_body
+comp_2=`{
+comp_3=`   float3 base = tex2D(sampler_main, uv).xyz;
+comp_4=`   float3 bloom = GetBlur1(uv) * 0.349
+comp_5=`                + GetBlur2(uv) * 0.5
+comp_6=`                + GetBlur3(uv) * 0.7;
+comp_7=`   float3 col = base + bloom * (0.30 + q1 * 0.473);
+comp_8=`   float r = length(uv - 0.5);
+comp_9=`   col *= 1.0 - saturate(r * r * 1.0);
+comp_10=`   ret = pow(saturate(col), float3(0.92, 0.94, 0.96));
+comp_11=`}

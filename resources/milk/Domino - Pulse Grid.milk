@@ -1,0 +1,113 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.150
+fDecay=0.940
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.000
+nVideoEchoOrientation=0
+nWaveMode=4
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=1
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=0
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.800
+fWaveScale=1.500
+fWaveSmoothing=0.550
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=1.000
+fWarpScale=1.000
+fZoomExponent=1.000
+nMotionVectorsX=16.000
+nMotionVectorsY=12.000
+mv_dx=0.000
+mv_dy=0.000
+mv_l=1.200
+mv_r=0.300
+mv_g=0.900
+mv_b=1.000
+mv_a=0.250
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.000
+rot=0.000
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.020
+sx=1.000
+sy=1.000
+wave_r=0.200
+wave_g=1.000
+wave_b=0.700
+wave_x=0.500
+wave_y=0.500
+ob_size=0.006
+ob_r=0.000
+ob_g=0.300
+ob_b=0.300
+ob_a=0.700
+ib_size=0.003
+ib_r=0.200
+ib_g=1.000
+ib_b=0.800
+ib_a=0.400
+shapecode_0_enabled=1
+shapecode_0_sides=4
+shapecode_0_additive=1
+shapecode_0_thickOutline=1
+shapecode_0_textured=0
+shapecode_0_num_inst=25
+shapecode_0_x=0.500
+shapecode_0_y=0.500
+shapecode_0_rad=0.05000
+shapecode_0_r=0.000
+shapecode_0_g=0.000
+shapecode_0_b=0.000
+shapecode_0_a=0.000
+shapecode_0_r2=0.100
+shapecode_0_g2=0.900
+shapecode_0_b2=0.700
+shapecode_0_a2=0.250
+shapecode_0_border_r=0.300
+shapecode_0_border_g=1.000
+shapecode_0_border_b=0.900
+shapecode_0_border_a=0.550
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = mid_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 0.998 + 0.010 * bass_att;
+per_frame_6=dx = 0.0008 * sin(time * 0.4);
+per_frame_7=dy = 0.0008 * cos(time * 0.33);
+per_frame_8=decay = 0.930 + 0.050 * mid_att;
+per_frame_9=warp = 0.01 + 0.05 * treb_att;
+per_frame_10=mv_a = 0.10 + 0.30 * treb_att;
+per_pixel_1=zoom = zoom + 0.004 * sin(x * 18 + time * 1.2) * cos(y * 18 - time) * q2;
+shape_0_per_frame1=col = instance % 5;
+shape_0_per_frame2=row = int(instance / 5);
+shape_0_per_frame3=x = 0.14 + col * 0.18;
+shape_0_per_frame4=y = 0.14 + row * 0.18;
+shape_0_per_frame5=phase = col * 0.7 + row * 0.5;
+shape_0_per_frame6=lvl = 0.5 + 0.5 * sin(q4 * 1.6 + phase);
+shape_0_per_frame7=rad = 0.020 + 0.045 * lvl * (0.4 + q1);
+shape_0_per_frame8=ang = q4 * 0.5 + phase;
+shape_0_per_frame9=g2 = 0.4 + 0.6 * lvl;
+shape_0_per_frame10=b2 = 0.9;
+shape_0_per_frame11=a2 = 0.10 + 0.35 * lvl * q1;
+shape_0_per_frame12=border_a = 0.25 + 0.45 * lvl;

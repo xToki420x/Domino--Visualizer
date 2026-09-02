@@ -1,0 +1,93 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.200
+fDecay=0.938
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.150
+nVideoEchoOrientation=0
+nWaveMode=0
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=0
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=1.012
+fWaveScale=1.200
+fWaveSmoothing=0.700
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=1.000
+fWarpScale=1.300
+fZoomExponent=1.000
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_dx=0.000
+mv_dy=0.000
+mv_l=0.900
+mv_r=1.000
+mv_g=1.000
+mv_b=1.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.002
+rot=-0.010
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.300
+sx=1.000
+sy=1.000
+wave_r=1.000
+wave_g=1.000
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_r=0.000
+ob_g=0.000
+ob_b=0.000
+ob_a=0.000
+ib_size=0.000
+ib_r=0.250
+ib_g=0.250
+ib_b=0.250
+ib_a=0.000
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = mid_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 1.001 + 0.0100 * q1;
+per_frame_6=rot = -0.0068 + -0.0140 * sin(time * 0.0738);
+per_frame_7=warp = 0.15 + 0.45 * q2;
+per_frame_8=decay = 0.9375;
+per_frame_9=hue = time * 0.0965 + 3.463;
+per_frame_10=wave_r = 1.000 * (0.55 + 0.45 * sin(hue));
+per_frame_11=wave_g = 1.000 * (0.55 + 0.45 * sin(hue + 2.09));
+per_frame_12=wave_b = 0.550 * (0.55 + 0.45 * sin(hue + 4.19));
+per_pixel_1=rot = rot + -0.0341 * (1 - rad) * q1;
+per_pixel_2=zoom = zoom + 0.006 * sin(ang * 3 + time * 0.5110) * q2;
+warp_1=`shader_body
+warp_2=`{
+warp_3=`   float2 d = uv - 0.5;
+warp_4=`   float r = length(d) + 0.0001;
+warp_5=`   float swirl = -0.00795 * (1.0 - r) * (0.4 + q1);
+warp_6=`   float s = sin(swirl);
+warp_7=`   float c = cos(swirl);
+warp_8=`   float2 uv2 = float2(d.x * c - d.y * s, d.x * s + d.y * c) + 0.5;
+warp_9=`   ret = tex2D(sampler_main, uv2).xyz * decay;
+warp_10=`}

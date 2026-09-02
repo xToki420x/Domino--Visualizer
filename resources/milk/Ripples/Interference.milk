@@ -1,0 +1,97 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.200
+fDecay=0.973
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.100
+nVideoEchoOrientation=0
+nWaveMode=0
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=0
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.256
+fWaveScale=1.200
+fWaveSmoothing=0.700
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=1.000
+fWarpScale=1.300
+fZoomExponent=1.000
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_dx=0.000
+mv_dy=0.000
+mv_l=0.900
+mv_r=1.000
+mv_g=1.000
+mv_b=1.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.000
+rot=0.000
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.100
+sx=1.000
+sy=1.000
+wave_r=1.000
+wave_g=1.000
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_r=0.000
+ob_g=0.000
+ob_b=0.000
+ob_a=0.000
+ib_size=0.000
+ib_r=0.250
+ib_g=0.250
+ib_b=0.250
+ib_a=0.000
+per_frame_1=q1 = treb_att;
+per_frame_2=q2 = bass_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 0.9995 + 0.0060 * q1;
+per_frame_6=rot = 0.0030 * sin(time * 0.1804);
+per_frame_7=decay = 0.9727 + 0.02 * q3;
+per_frame_8=hue = time * 0.2788 + 5.053;
+per_frame_9=wave_r = 0.350 * (0.55 + 0.45 * sin(hue));
+per_frame_10=wave_g = 0.850 * (0.55 + 0.45 * sin(hue + 2.09));
+per_frame_11=wave_b = 0.100 * (0.55 + 0.45 * sin(hue + 4.19));
+per_pixel_1=zoom = zoom + 0.004 * cos(rad * 12.0000 - time * 2.1321);
+warp_1=`shader_body
+warp_2=`{
+warp_3=`   float2 d = uv - 0.5;
+warp_4=`   float r = length(d) + 0.0001;
+warp_5=`   float ripple = sin(r * 33.00 - time * 2.7881 + q1 * 5.0);
+warp_6=`   float2 uv2 = uv + (d / r) * ripple * 0.00361 * (0.35 + q1);
+warp_7=`   float3 col = tex2D(sampler_main, uv2).xyz;
+warp_8=`   ret = col * decay;
+warp_9=`}
+comp_1=`shader_body
+comp_2=`{
+comp_3=`   float3 base = tex2D(sampler_main, uv).xyz;
+comp_4=`   float3 b1 = GetBlur1(uv);
+comp_5=`   float3 highlight = saturate((base - GetBlur3(uv)) * 2.2);
+comp_6=`   ret = base + b1 * 0.18 + highlight * (0.25 + q3 * 0.5);
+comp_7=`}

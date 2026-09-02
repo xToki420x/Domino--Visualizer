@@ -1,0 +1,65 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  AppSettings,
+  ImportResult,
+  LibraryEntry,
+  LibraryKind,
+  DominoApi,
+  ReadResult,
+  WriteResult,
+} from '@shared/types';
+
+const api: DominoApi = {
+  platform: process.platform,
+  versions: {
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  },
+
+  library: {
+    list: (kind: LibraryKind): Promise<LibraryEntry[]> => ipcRenderer.invoke('library:list', kind),
+    read: (kind: LibraryKind, id: string): Promise<ReadResult> =>
+      ipcRenderer.invoke('library:read', kind, id),
+    write: (kind: LibraryKind, id: string, content: string): Promise<WriteResult> =>
+      ipcRenderer.invoke('library:write', kind, id, content),
+    delete: (kind: LibraryKind, id: string): Promise<WriteResult> =>
+      ipcRenderer.invoke('library:delete', kind, id),
+    rename: (kind: LibraryKind, fromId: string, toId: string): Promise<WriteResult> =>
+      ipcRenderer.invoke('library:rename', kind, fromId, toId),
+    exists: (kind: LibraryKind, id: string): Promise<boolean> =>
+      ipcRenderer.invoke('library:exists', kind, id),
+    import: (kind: LibraryKind): Promise<ImportResult> => ipcRenderer.invoke('library:import', kind),
+    reveal: (kind: LibraryKind): Promise<void> => ipcRenderer.invoke('library:reveal', kind),
+  },
+
+  dialog: {
+    openAudioFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openAudioFile'),
+    saveText: (defaultName: string, content: string): Promise<WriteResult> =>
+      ipcRenderer.invoke('dialog:saveText', defaultName, content),
+  },
+
+  settings: {
+    get: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
+    set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
+      ipcRenderer.invoke('settings:set', patch),
+  },
+
+  window: {
+    toggleFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:toggleFullscreen'),
+    setFullscreen: (v: boolean): Promise<boolean> =>
+      ipcRenderer.invoke('window:setFullscreen', v),
+    isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:isFullscreen'),
+    setAlwaysOnTop: (v: boolean): Promise<boolean> => ipcRenderer.invoke('window:setAlwaysOnTop', v),
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+  },
+
+  onCommand(cb) {
+    const listener = (_e: unknown, command: string, payload?: unknown): void => cb(command, payload);
+    ipcRenderer.on('app:command', listener);
+    return () => ipcRenderer.off('app:command', listener);
+  },
+};
+
+contextBridge.exposeInMainWorld('domino', api);

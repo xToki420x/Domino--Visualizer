@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' file: blob:; worker-src 'self' blob:;"
+    />
+    <title>Domino</title>
+    <link rel="stylesheet" href="./styles/main.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <!-- ---------------------------------------------------------------- -->
+      <aside class="sidebar" id="sidebar">
+        <header class="sidebar-head">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <span class="brand-name">Dom<span class="brand-accent">ino</span></span>
+          </div>
+        </header>
+
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" data-kind="milk" role="tab">MilkDrop</button>
+          <button class="tab" data-kind="shader" role="tab">Shaders</button>
+        </div>
+
+        <div class="search-row">
+          <input
+            id="library-search"
+            class="search"
+            type="search"
+            placeholder="Search presets…"
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="library" id="library" role="listbox" tabindex="0"></div>
+
+        <footer class="sidebar-foot">
+          <button class="btn btn-ghost" id="btn-import">Import…</button>
+          <button class="btn btn-ghost" id="btn-reveal">Folder</button>
+          <button class="btn btn-ghost" id="btn-new">New</button>
+        </footer>
+      </aside>
+
+      <!-- ---------------------------------------------------------------- -->
+      <main class="stage" id="stage">
+        <canvas id="canvas"></canvas>
+
+        <div class="hud" id="hud">
+          <div class="hud-title" id="hud-title">No visual loaded</div>
+          <div class="hud-stats">
+            <span class="stat" id="stat-fps">-- fps</span>
+            <span class="stat" id="stat-bpm">-- bpm</span>
+            <span class="stat" id="stat-src">no input</span>
+          </div>
+        </div>
+
+        <div class="meters" id="meters">
+          <div class="meter"><span class="meter-label">BASS</span><i id="meter-bass"></i></div>
+          <div class="meter"><span class="meter-label">MID</span><i id="meter-mid"></i></div>
+          <div class="meter"><span class="meter-label">TREB</span><i id="meter-treb"></i></div>
+          <div class="beat-dot" id="beat-dot"></div>
+        </div>
+
+        <!-- Big preset name, flashed on change and while immersive -->
+        <div class="preset-flash" id="preset-flash">
+          <span class="preset-flash-name" id="preset-flash-name"></span>
+          <span class="preset-flash-kind" id="preset-flash-kind"></span>
+        </div>
+
+        <div class="toast" id="toast" hidden></div>
+
+        <!-- Shader / preset editor, slides up over the stage -->
+        <section class="editor-panel" id="editor-panel" hidden>
+          <header class="editor-head">
+            <div class="editor-tabs" id="editor-tabs"></div>
+            <div class="editor-actions">
+              <span class="editor-status" id="editor-status"></span>
+              <button class="btn btn-primary" id="btn-apply" title="Ctrl+Enter">Apply</button>
+              <button class="btn" id="btn-save" title="Ctrl+S">Save</button>
+              <button class="btn" id="btn-save-as" title="Ctrl+Shift+S - name it">
+                Save As…
+              </button>
+              <button class="btn btn-ghost" id="btn-close-editor">Close</button>
+            </div>
+          </header>
+          <div class="editor-channels" id="editor-channels" hidden></div>
+          <div class="editor-host" id="editor-host"></div>
+          <div class="editor-errors" id="editor-errors" hidden></div>
+        </section>
+      </main>
+
+      <!-- ---------------------------------------------------------------- -->
+      <aside class="inspector" id="inspector">
+        <header class="inspector-head">
+          <div class="inspector-tabs" id="inspector-tabs" role="tablist">
+            <button class="itab is-active" data-panel="preset" role="tab">Preset</button>
+            <button class="itab" data-panel="display" role="tab">Display</button>
+          </div>
+          <button class="btn btn-ghost btn-tiny" id="btn-reset-params">Reset</button>
+        </header>
+        <div class="inspector-body" id="inspector-body"></div>
+        <div class="inspector-body" id="display-body" hidden></div>
+      </aside>
+    </div>
+
+    <!-- -------------------------------------------------------------- -->
+    <footer class="transport" id="transport">
+      <div class="transport-group">
+        <button class="btn btn-primary" id="btn-listen">System Audio</button>
+        <button class="btn" id="btn-mic">Mic</button>
+        <button class="btn" id="btn-file">File…</button>
+        <button class="btn btn-ghost" id="btn-stop">Stop</button>
+      </div>
+
+      <div class="transport-group grow">
+        <label class="slider">
+          <span>Sens</span>
+          <input type="range" id="ctl-sensitivity" min="0.1" max="4" step="0.05" value="1" />
+          <output id="out-sensitivity">1.00</output>
+        </label>
+        <label class="slider">
+          <span>Gain</span>
+          <input type="range" id="ctl-gain" min="0.1" max="8" step="0.1" value="1" />
+          <output id="out-gain">1.0</output>
+        </label>
+        <label class="slider">
+          <span>Smooth</span>
+          <input type="range" id="ctl-smoothing" min="0" max="0.95" step="0.01" value="0.72" />
+          <output id="out-smoothing">0.72</output>
+        </label>
+        <label class="slider">
+          <span>Beat</span>
+          <input type="range" id="ctl-beat" min="0.2" max="3" step="0.05" value="1" />
+          <output id="out-beat">1.00</output>
+        </label>
+      </div>
+
+      <div class="transport-group">
+        <button class="btn" id="btn-edit" title="E">Edit</button>
+        <button class="btn" id="btn-random" title="Space">Shuffle</button>
+        <label class="toggle">
+          <input type="checkbox" id="ctl-autoplay" />
+          <span>Auto</span>
+        </label>
+        <button class="btn" id="btn-fullscreen" title="F - fullscreen with no interface">
+          Fullscreen
+        </button>
+      </div>
+    </footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

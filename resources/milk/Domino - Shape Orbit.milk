@@ -1,0 +1,120 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.300
+fDecay=0.930
+fVideoEchoZoom=1.010
+fVideoEchoAlpha=0.300
+nVideoEchoOrientation=2
+nWaveMode=1
+bAdditiveWaves=1
+bWaveDots=1
+bWaveThick=0
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=1
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.500
+fWaveScale=1.800
+fWaveSmoothing=0.700
+fWaveParam=0.000
+fWarpAnimSpeed=1.000
+fWarpScale=1.600
+fZoomExponent=1.000
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.006
+rot=0.012
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.150
+sx=1.000
+sy=1.000
+wave_r=1.000
+wave_g=0.800
+wave_b=0.400
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_a=0.000
+ib_size=0.000
+ib_a=0.000
+shapecode_0_enabled=1
+shapecode_0_sides=6
+shapecode_0_additive=1
+shapecode_0_thickOutline=1
+shapecode_0_textured=0
+shapecode_0_num_inst=7
+shapecode_0_x=0.500
+shapecode_0_y=0.500
+shapecode_0_rad=0.14000
+shapecode_0_ang=0.00000
+shapecode_0_tex_ang=0.00000
+shapecode_0_tex_zoom=1.00000
+shapecode_0_r=1.000
+shapecode_0_g=0.400
+shapecode_0_b=0.100
+shapecode_0_a=0.550
+shapecode_0_r2=0.100
+shapecode_0_g2=0.300
+shapecode_0_b2=1.000
+shapecode_0_a2=0.000
+shapecode_0_border_r=1.000
+shapecode_0_border_g=0.900
+shapecode_0_border_b=0.700
+shapecode_0_border_a=0.450
+shapecode_1_enabled=1
+shapecode_1_sides=32
+shapecode_1_additive=1
+shapecode_1_thickOutline=0
+shapecode_1_textured=0
+shapecode_1_num_inst=1
+shapecode_1_x=0.500
+shapecode_1_y=0.500
+shapecode_1_rad=0.30000
+shapecode_1_r=0.000
+shapecode_1_g=0.000
+shapecode_1_b=0.000
+shapecode_1_a=0.000
+shapecode_1_r2=0.300
+shapecode_1_g2=0.700
+shapecode_1_b2=1.000
+shapecode_1_a2=0.300
+shapecode_1_border_a=0.000
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = mid_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 1.004 + 0.014 * bass_att;
+per_frame_6=rot = 0.008 * sin(time * 0.21) + 0.004;
+per_frame_7=warp = 0.08 + 0.20 * mid_att;
+per_frame_8=decay = 0.920 + 0.050 * treb_att;
+per_pixel_1=rot = rot + 0.02 * (0.5 - rad) * q2;
+shape_0_per_frame1=orbit = q4 * 0.35 + instance * 0.8975;
+shape_0_per_frame2=dist = 0.14 + 0.12 * sin(q4 * 0.4 + instance);
+shape_0_per_frame3=x = 0.5 + cos(orbit) * dist * 0.8;
+shape_0_per_frame4=y = 0.5 + sin(orbit) * dist;
+shape_0_per_frame5=rad = 0.030 + 0.045 * q1 + 0.010 * instance;
+shape_0_per_frame6=ang = orbit * 1.7;
+shape_0_per_frame7=r = 0.5 + 0.5 * sin(instance * 0.9 + q4 * 0.5);
+shape_0_per_frame8=g = 0.5 + 0.5 * sin(instance * 0.9 + q4 * 0.5 + 2.1);
+shape_0_per_frame9=b = 0.5 + 0.5 * sin(instance * 0.9 + q4 * 0.5 + 4.2);
+shape_0_per_frame10=a = 0.35 + 0.35 * q1;
+shape_0_per_frame11=border_a = 0.25 + 0.35 * q3;
+shape_1_per_frame1=rad = 0.26 + 0.10 * q1;
+shape_1_per_frame2=a2 = 0.12 + 0.22 * q1;
+shape_1_per_frame3=g2 = 0.5 + 0.4 * sin(q4 * 0.3);

@@ -1,0 +1,15 @@
+# Normalise line endings so the repo is stable across platforms.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.ico binary
+*.png binary
+*.exe binary
+*.jpg binary
+*.woff binary
+*.woff2 binary
+
+# GitHub language stats: the bundled content is data, not source, and would
+# otherwise drown out the TypeScript the project actually is.
+resources/milk/** linguist-vendored
+resources/shaders/** linguist-language=GLSL

@@ -1,0 +1,106 @@
+[preset00]
+fRating=3.000
+fGammaAdj=1.200
+fDecay=0.962
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.200
+nVideoEchoOrientation=0
+nWaveMode=2
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=1
+bModWaveAlphaByVolume=0
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.986
+fWaveScale=1.200
+fWaveSmoothing=0.700
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=1.000
+fWarpScale=1.339
+fZoomExponent=0.700
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_dx=0.000
+mv_dy=0.000
+mv_l=0.900
+mv_r=1.000
+mv_g=1.000
+mv_b=1.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=0.994
+rot=0.000
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.900
+sx=1.000
+sy=1.000
+wave_r=1.000
+wave_g=1.000
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_r=0.000
+ob_g=0.000
+ob_b=0.000
+ob_a=0.000
+ib_size=0.000
+ib_r=0.250
+ib_g=0.250
+ib_b=0.250
+ib_a=0.000
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = mid_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = time;
+per_frame_5=zoom = 0.9935 - 0.006 * q1;
+per_frame_6=rot = -0.0060 + -0.0100 * sin(time * 0.1788);
+per_frame_7=warp = 0.55 + 0.75 * q2;
+per_frame_8=decay = 0.9617;
+per_frame_9=hue = time * 0.1600 + 0.603;
+per_frame_10=wave_r = 1.000 * (0.55 + 0.45 * sin(hue));
+per_frame_11=wave_g = 1.000 * (0.55 + 0.45 * sin(hue + 2.09));
+per_frame_12=wave_b = 0.600 * (0.55 + 0.45 * sin(hue + 4.19));
+per_pixel_1=zoomexp = 0.6 + 0.3 * q1;
+per_pixel_2=rot = rot + -0.0300 * rad * q2;
+per_pixel_3=warp = warp * (1 + 0.8 * sin(ang * 3 + time * 2));
+warp_1=`shader_body
+warp_2=`{
+warp_3=`   float2 d = uv - 0.5;
+warp_4=`   float r = length(d) + 0.0001;
+warp_5=`   float2 dir = d / r;
+warp_6=`   float2 uv2 = uv - dir * (0.00151 + 0.00301 * r) * (0.5 + q1);
+warp_7=`   float3 col = tex2D(sampler_main, uv2).xyz;
+warp_8=`   float l = saturate(lum(col) * 1.4);
+warp_9=`   float3 fire = lerp(float3(0.240, 0.02, 0.0), float3(1.00, 1.00, 0.25), l);
+warp_10=`   col = lerp(col, col * fire * 1.6, 0.24);
+warp_11=`   ret = col * decay;
+warp_12=`}
+comp_1=`shader_body
+comp_2=`{
+comp_3=`   float3 base = tex2D(sampler_main, uv).xyz;
+comp_4=`   float3 bloom = GetBlur1(uv) * 0.230 + GetBlur2(uv) * 0.326 + GetBlur3(uv) * 0.383;
+comp_5=`   float3 col = base + bloom * (0.172 + q1 * 0.268);
+comp_6=`   float r = length(uv - 0.5);
+comp_7=`   col += float3(1.00, 0.70, 0.25) * exp(-r * 9.0) * (0.115 + q1 * 0.326);
+comp_8=`   col *= 1.0 - saturate(r * r * 1.2);
+comp_9=`   ret = col;
+comp_10=`}

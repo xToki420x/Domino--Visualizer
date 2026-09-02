@@ -1,0 +1,106 @@
+[preset00]
+fRating=5.000
+fGammaAdj=1.100
+fDecay=0.990
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.000
+nVideoEchoOrientation=0
+nWaveMode=6
+bAdditiveWaves=1
+bWaveDots=1
+bWaveThick=0
+bModWaveAlphaByVolume=1
+bMaximizeWaveColor=1
+bTexWrap=0
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.450
+fWaveScale=2.200
+fWaveSmoothing=0.400
+fWaveParam=0.500
+fModWaveAlphaStart=0.650
+fModWaveAlphaEnd=1.400
+fWarpAnimSpeed=0.300
+fWarpScale=3.000
+fZoomExponent=2.200
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.030
+rot=0.000
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.050
+sx=1.000
+sy=1.000
+wave_r=0.800
+wave_g=0.900
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_a=0.000
+ib_size=0.000
+ib_a=0.000
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = treb_att;
+per_frame_3=q3 = vol_att;
+per_frame_4=zoom = 1.018 + 0.030 * bass_att;
+per_frame_5=rot = 0.003 * sin(time * 0.07);
+per_frame_6=warp = 0.02 + 0.06 * treb_att;
+per_frame_7=decay = 0.986 + 0.010 * mid_att;
+per_frame_8=cx = 0.5 + 0.04 * sin(time * 0.043);
+per_frame_9=cy = 0.5 + 0.04 * cos(time * 0.037);
+per_pixel_1=zoomexp = 1.8 + 0.8 * q1;
+per_pixel_2=zoom = zoom + 0.012 * (1 - rad) * q1;
+warp_1=`shader_body
+warp_2=`{
+warp_3=`    // Straight feedback with a very slow fade. The tunnel comes entirely
+warp_4=`    // from the per-pixel zoom exponent, so this pass only has to keep the
+warp_5=`    // trail alive and add a little chromatic drift.
+warp_6=`    float2 d = uv - 0.5;
+warp_7=`    float r = length(d) + 0.0001;
+warp_8=`    float2 dir = d / r;
+warp_9=`
+warp_10=`    float sep = 0.0009 * (0.3 + q2);
+warp_11=`    float3 col;
+warp_12=`    col.x = tex2D(sampler_main, uv + dir * sep).x;
+warp_13=`    col.y = tex2D(sampler_main, uv).y;
+warp_14=`    col.z = tex2D(sampler_main, uv - dir * sep).z;
+warp_15=`
+warp_16=`    ret = col * decay;
+warp_17=`}
+comp_1=`shader_body
+comp_2=`{
+comp_3=`    float3 base = tex2D(sampler_main, uv).xyz;
+comp_4=`
+comp_5=`    // Wide bloom only, which reads as nebula glow rather than sharp stars.
+comp_6=`    float3 bloom = GetBlur2(uv) * 0.5 + GetBlur3(uv) * 0.8;
+comp_7=`
+comp_8=`    float3 col = base + bloom * (0.30 + q3 * 0.40);
+comp_9=`
+comp_10=`    // Tint the darks blue and the brights warm, a cheap colour grade that
+comp_11=`    // makes the field feel deep.
+comp_12=`    float l = lum(col);
+comp_13=`    float3 shadow = float3(0.30, 0.45, 0.95);
+comp_14=`    float3 light  = float3(1.00, 0.90, 0.72);
+comp_15=`    col *= lerp(shadow, light, saturate(l * 1.6));
+comp_16=`
+comp_17=`    float r = length(uv - 0.5);
+comp_18=`    col *= 1.0 - saturate(r * r * 1.4);
+comp_19=`
+comp_20=`    ret = col;
+comp_21=`}

@@ -1,0 +1,74 @@
+name: Release
+
+# Push a version tag to cut a release:
+#   npm version patch && git push --follow-tags
+#
+# The workflow builds the Windows installer and portable exe, verifies the
+# packaged binary actually runs, and attaches both to a GitHub Release.
+on:
+  push:
+    tags:
+      - 'v*'
+  # Also runnable by hand, which is useful for checking a build without tagging.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Boots the real app, loads every bundled visual, and checks each one
+      # compiles and renders. Needs a display, so run it under a virtual one.
+      - name: Smoke test
+        run: npm run test:smoke
+
+      - name: Package
+        run: npx electron-builder --win --publish never
+
+      # The packaging step changes how the bundled library is located, so the
+      # shipped binary is verified separately from the dev build.
+      - name: Verify packaged build
+        run: |
+          $out = & ".\release\win-unpacked\Domino.exe" --selftest 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'SELFTEST PASSED') { exit 1 }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: domino-windows
+          path: |
+            release/Domino-Setup-*.exe
+            release/Domino-*-portable.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            release/Domino-Setup-*.exe
+            release/Domino-*-portable.exe

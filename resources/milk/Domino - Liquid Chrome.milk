@@ -1,0 +1,115 @@
+[preset00]
+fRating=4.000
+fGammaAdj=1.000
+fDecay=0.975
+fVideoEchoZoom=1.000
+fVideoEchoAlpha=0.000
+nVideoEchoOrientation=0
+nWaveMode=1
+bAdditiveWaves=1
+bWaveDots=0
+bWaveThick=1
+bModWaveAlphaByVolume=1
+bMaximizeWaveColor=1
+bTexWrap=1
+bDarkenCenter=0
+bRedBlueStereo=0
+bBrighten=0
+bDarken=0
+bSolarize=0
+bInvert=0
+fWaveAlpha=0.700
+fWaveScale=1.600
+fWaveSmoothing=0.800
+fWaveParam=0.000
+fModWaveAlphaStart=0.700
+fModWaveAlphaEnd=1.300
+fWarpAnimSpeed=0.500
+fWarpScale=1.800
+fZoomExponent=1.000
+nMotionVectorsX=0.000
+nMotionVectorsY=0.000
+mv_a=0.000
+b1n=0.000
+b2n=0.000
+b3n=0.000
+b1x=1.000
+b2x=1.000
+b3x=1.000
+b1ed=0.250
+zoom=1.001
+rot=0.002
+cx=0.500
+cy=0.500
+dx=0.000
+dy=0.000
+warp=0.600
+sx=1.000
+sy=1.000
+wave_r=0.700
+wave_g=0.850
+wave_b=1.000
+wave_x=0.500
+wave_y=0.500
+ob_size=0.000
+ob_a=0.000
+ib_size=0.000
+ib_a=0.000
+per_frame_1=q1 = bass_att;
+per_frame_2=q2 = mid_att;
+per_frame_3=q3 = treb_att;
+per_frame_4=q4 = 0.5 + 0.5 * sin(time * 0.11);
+per_frame_5=zoom = 1.0005 + 0.006 * bass_att;
+per_frame_6=rot = 0.002 * sin(time * 0.09);
+per_frame_7=warp = 0.35 + 0.45 * mid_att;
+per_frame_8=decay = 0.970 + 0.020 * treb_att;
+per_pixel_1=zoom = zoom + 0.003 * sin(rad * 5.0 + time * 0.6);
+warp_1=`shader_body
+warp_2=`{
+warp_3=`    float2 d = uv - 0.5;
+warp_4=`    float r = length(d) + 0.0001;
+warp_5=`
+warp_6=`    // Radial ripple: push samples in and out along the radius so the
+warp_7=`    // image folds over itself like a liquid surface.
+warp_8=`    float ripple = sin(r * 22.0 - time * 1.6 + q1 * 4.0) * 0.0016 * (0.4 + q1);
+warp_9=`    float2 uv2 = uv + (d / r) * ripple;
+warp_10=`
+warp_11=`    // Slight rotation that reverses sign across the midpoint radius,
+warp_12=`    // which is what produces the shearing chrome look.
+warp_13=`    float swirl = 0.006 * (0.35 - r) * (0.5 + q2);
+warp_14=`    float s = sin(swirl);
+warp_15=`    float c = cos(swirl);
+warp_16=`    float2 rd = uv2 - 0.5;
+warp_17=`    uv2 = float2(rd.x * c - rd.y * s, rd.x * s + rd.y * c) + 0.5;
+warp_18=`
+warp_19=`    float3 col = tex2D(sampler_main, uv2).xyz;
+warp_20=`
+warp_21=`    // Push colour toward a metallic ramp based on luminance.
+warp_22=`    float l = lum(col);
+warp_23=`    float3 metal = lerp(float3(0.05, 0.07, 0.12), float3(0.85, 0.92, 1.00), l);
+warp_24=`    col = lerp(col, metal, 0.10);
+warp_25=`
+warp_26=`    ret = col * 0.9885;
+warp_27=`}
+comp_1=`shader_body
+comp_2=`{
+comp_3=`    float3 base = tex2D(sampler_main, uv).xyz;
+comp_4=`    float3 b1 = GetBlur1(uv);
+comp_5=`    float3 b3 = GetBlur3(uv);
+comp_6=`
+comp_7=`    // Fake specular: the difference between a sharp and a wide blur is a
+comp_8=`    // cheap edge/highlight signal.
+comp_9=`    float3 highlight = saturate((base - b3) * 2.4);
+comp_10=`
+comp_11=`    float3 col = base + b1 * 0.20 + highlight * (0.35 + q3 * 0.55);
+comp_12=`
+comp_13=`    // Cool-to-warm tint sweep over time.
+comp_14=`    float3 cool = float3(0.75, 0.88, 1.10);
+comp_15=`    float3 warm = float3(1.10, 0.92, 0.78);
+comp_16=`    col *= lerp(cool, warm, q4);
+comp_17=`
+comp_18=`    float r = length(uv - 0.5);
+comp_19=`    col *= 1.0 - saturate(r * r * 0.9);
+comp_20=`
+comp_21=`    ret = col;
+comp_22=`}

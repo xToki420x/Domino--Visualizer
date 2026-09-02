@@ -1,0 +1,86 @@
+{
+  "name": "domino",
+  "version": "0.1.0",
+  "description": "Domino - a music visualizer that listens to everything your computer plays. Shadertoy-class shader editing and a from-scratch MilkDrop engine.",
+  "author": "Jesse",
+  "license": "MIT",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "test:eel": "esbuild test/eel.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/eel.test.cjs --log-level=warning && node node_modules/.cache/eel.test.cjs",
+    "test:milk": "esbuild test/milk.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/milk.test.cjs --log-level=warning && node node_modules/.cache/milk.test.cjs",
+    "test:smoke": "electron test/smoke.cjs",
+    "test": "npm run test:eel && npm run test:milk && npm run test:shader",
+    "test:shader": "esbuild test/shader.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/shader.test.cjs --log-level=warning && node node_modules/.cache/shader.test.cjs",
+    "gen:presets": "node tools/generate-presets.mjs",
+    "gen:icon": "electron tools/make-icon.cjs"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.52.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.domino.visualizer",
+    "productName": "Domino",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Domino",
+      "artifactName": "Domino-Setup-${version}.${ext}",
+      "uninstallDisplayName": "Domino"
+    },
+    "portable": {
+      "artifactName": "Domino-${version}-portable.${ext}"
+    },
+    "publish": null
+  },
+  "productName": "Domino"
+}
