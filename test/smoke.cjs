@@ -35,6 +35,13 @@ const IGNORED_WARNINGS = [
   'Insecure Content-Security-Policy',
   'Autofill.enable',
   'Autofill.setAddresses',
+  // Graphics-driver chatter, not application defects. These appear on machines
+  // without hardware acceleration (VMs, CI runners) where the app still works
+  // correctly - treating them as failures would fail a perfectly good build.
+  'GL Driver Message',
+  'GroupMarkerNotSet',
+  'software WebGL has been deprecated',
+  'Automatic fallback to software WebGL',
 ];
 
 /**

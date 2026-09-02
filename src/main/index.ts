@@ -32,6 +32,20 @@ app.commandLine.appendSwitch(
 // The renderer does its own smoothing/AGC, so let Chromium hand us raw samples.
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 
+/*
+ * Allow WebGL to fall back to software rendering.
+ *
+ * Chromium deprecated the automatic fallback, so without this flag a machine
+ * with no usable GPU driver - a VM, an RDP session, a bare CI runner, or a
+ * laptop whose driver Chromium has blocklisted - gets no WebGL2 context at all
+ * and the app cannot start. With it, those machines run (slowly) instead of
+ * showing an error.
+ *
+ * This does not force software rendering: hardware acceleration is still used
+ * whenever it is available, so it costs nothing on a normal desktop.
+ */
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
