@@ -1,6 +1,6 @@
 {
   "name": "domino",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Domino - a music visualizer that listens to everything your computer plays. Shadertoy-class shader editing and a from-scratch MilkDrop engine.",
   "author": "Jesse",
   "license": "MIT",
