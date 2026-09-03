@@ -33,6 +33,11 @@ const api: DominoApi = {
     reveal: (kind: LibraryKind): Promise<void> => ipcRenderer.invoke('library:reveal', kind),
   },
 
+  shadertoy: {
+    fetch: (id: string): Promise<{ ok: boolean; shader?: unknown; error?: string }> =>
+      ipcRenderer.invoke('shadertoy:fetch', id),
+  },
+
   dialog: {
     openAudioFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openAudioFile'),
     saveText: (defaultName: string, content: string): Promise<WriteResult> =>

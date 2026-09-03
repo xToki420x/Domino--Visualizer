@@ -20,6 +20,12 @@ import {
   type ShaderProjectDoc,
 } from './shadertoy/ShaderDocument';
 import { ShadertoyRuntime, type PassId } from './shadertoy/ShadertoyRuntime';
+import {
+  convertShadertoy,
+  parseShadertoyId,
+  withAttribution,
+  type ShadertoyShader,
+} from './shadertoy/ShadertoyImport';
 import { ShaderPassBar } from './ui/ShaderPassBar';
 import { DisplayPanel } from './ui/DisplayPanel';
 import { CodeEditor, type EditorDocument } from './ui/Editor';
@@ -230,20 +236,18 @@ class Domino {
       ]);
     };
 
-    on(el('btn-import'), 'click', async () => {
-      const kind = this.tabs.kind;
-      const result = await window.domino.library.import(kind);
-      if (!result.ok) {
-        this.toast.show(`Import failed: ${result.error}`, 'error');
+    on(el('btn-import'), 'click', (event) => {
+      // Shaders can come from a file or straight off shadertoy.com, so offer
+      // both rather than making the link path a hidden feature.
+      if (this.tabs.kind === 'shader') {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        showContextMenu(rect.left, rect.top - 78, [
+          { label: 'From Shadertoy link…', action: () => void this.importFromShadertoy() },
+          { label: 'From files…', action: () => void this.importFiles('shader') },
+        ]);
         return;
       }
-      await this.refreshLibrary(kind);
-      await this.switchLibrary(kind);
-      this.toast.show(
-        result.imported === 0
-          ? 'Nothing imported.'
-          : `Imported ${result.imported} file${result.imported === 1 ? '' : 's'}.`,
-      );
+      void this.importFiles(this.tabs.kind);
     });
 
     on(el('btn-reveal'), 'click', () => void window.domino.library.reveal(this.tabs.kind));
@@ -334,6 +338,111 @@ class Domino {
     this.applyDisplayPatch(defaults);
     this.display.setSettings(this.settings);
     this.toast.show('Display settings restored to defaults.');
+  }
+
+  /** Copy files into the library with the OS picker. */
+  private async importFiles(kind: LibraryKind): Promise<void> {
+    const result = await window.domino.library.import(kind);
+    if (!result.ok) {
+      this.toast.show(`Import failed: ${result.error}`, 'error');
+      return;
+    }
+    await this.refreshLibrary(kind);
+    await this.switchLibrary(kind);
+    this.toast.show(
+      result.imported === 0
+        ? 'Nothing imported.'
+        : `Imported ${result.imported} file${result.imported === 1 ? '' : 's'}.`,
+    );
+  }
+
+  /* --------------------------- Shadertoy import -------------------------- */
+
+  /**
+   * Paste a shadertoy.com link and get the shader, with its passes, Common tab
+   * and channel bindings all wired up.
+   *
+   * Shadertoy's API needs a free key, so the first import asks for one. That is
+   * a one-off; it is stored in settings and reused after that.
+   */
+  private async importFromShadertoy(): Promise<void> {
+    if (!(await this.ensureShadertoyKey())) return;
+
+    const link = await promptText({
+      title: 'Import from Shadertoy',
+      label: 'Shader link or ID',
+      placeholder: 'https://www.shadertoy.com/view/XsXXDn',
+      confirmLabel: 'Import',
+      validate: (value) =>
+        parseShadertoyId(value) ? null : 'That does not look like a Shadertoy link or ID.',
+    });
+    if (link === null) return;
+
+    const id = parseShadertoyId(link);
+    if (!id) return;
+
+    this.toast.show('Fetching from Shadertoy…');
+    const response = await window.domino.shadertoy.fetch(id);
+
+    if (!response.ok || !response.shader) {
+      this.toast.show(response.error ?? 'Could not fetch that shader.', 'error');
+      // A rejected key is worth offering to fix immediately rather than making
+      // the user hunt through settings for it.
+      if (/api key/i.test(response.error ?? '')) {
+        if (await this.promptShadertoyKey(true)) void this.importFromShadertoy();
+      }
+      return;
+    }
+
+    const converted = convertShadertoy(response.shader as ShadertoyShader);
+    if (converted.doc.passes.length === 0) {
+      this.toast.show('That shader had no passes Domino can render.', 'error');
+      return;
+    }
+
+    this.shaderDoc = withAttribution(converted);
+    this.currentEntry = null;
+    this.mode = 'shader';
+    this.compileShaderDoc(converted.name, [...converted.warnings, ...converted.skipped]);
+    this.flashPreset();
+    this.openEditor();
+
+    const notes = converted.warnings.length + converted.skipped.length;
+    this.toast.show(
+      notes === 0
+        ? `Imported "${converted.name}" by ${converted.info.username ?? 'unknown'}.`
+        : `Imported "${converted.name}" with ${notes} note${notes === 1 ? '' : 's'} - see the editor.`,
+      notes === 0 ? 'info' : 'error',
+    );
+  }
+
+  /** Returns true when a key is available (already stored, or just entered). */
+  private async ensureShadertoyKey(): Promise<boolean> {
+    if (this.settings.shadertoyApiKey.trim()) return true;
+    return await this.promptShadertoyKey(false);
+  }
+
+  private async promptShadertoyKey(replacing: boolean): Promise<boolean> {
+    const key = await promptText({
+      title: replacing ? 'Shadertoy API key rejected' : 'Shadertoy API key needed',
+      label: 'API key',
+      value: replacing ? '' : this.settings.shadertoyApiKey,
+      placeholder: 'paste your key here',
+      confirmLabel: 'Save key',
+      validate: (value) =>
+        value.trim().length >= 6 ? null : 'Paste the key from shadertoy.com/howto#q2.',
+    });
+    if (key === null) {
+      this.toast.show(
+        'Importing by link needs a free Shadertoy API key. Get one at shadertoy.com/howto#q2 ' +
+          '(App Settings on your Shadertoy profile), then try again.',
+        'error',
+      );
+      return false;
+    }
+    this.settings.shadertoyApiKey = key.trim();
+    await window.domino.settings.set({ shadertoyApiKey: key.trim() });
+    return true;
   }
 
   /* ------------------------------ loading ------------------------------- */

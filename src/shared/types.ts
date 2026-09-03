@@ -72,6 +72,11 @@ export interface AppSettings {
   showFps: boolean;
   lastSource: 'loopback' | 'microphone' | 'device' | 'file' | 'none';
   lastVisual: { kind: LibraryKind; id: string } | null;
+  /**
+   * Free key from https://www.shadertoy.com/howto#q2, needed to import by link.
+   * Stored locally in settings.json and only ever sent to shadertoy.com.
+   */
+  shadertoyApiKey: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -100,6 +105,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showFps: true,
   lastSource: 'none',
   lastVisual: null,
+  shadertoyApiKey: '',
 };
 
 /** The API surface exposed on `window.domino` by the preload script. */
@@ -120,6 +126,11 @@ export interface DominoApi {
     import(kind: LibraryKind): Promise<ImportResult>;
     /** Reveals the user library folder in the OS file manager. */
     reveal(kind: LibraryKind): Promise<void>;
+  };
+
+  /** Fetches a shader from shadertoy.com by id, using the stored API key. */
+  shadertoy: {
+    fetch(id: string): Promise<{ ok: boolean; shader?: unknown; error?: string }>;
   };
 
   dialog: {

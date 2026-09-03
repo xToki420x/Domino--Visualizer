@@ -95,28 +95,50 @@ float dominoWave(float x);      // waveform lookup, -1..1
 Three source styles are accepted automatically: a Shadertoy `mainImage()`, a
 bare `main()`, or a complete shader with its own `#version` directive.
 
-### Importing a multi-tab Shadertoy shader
+### Importing from Shadertoy
 
-Shadertoy splits a shader across tabs — **Common**, **Buffer A**–**D**,
-**Image** — and keeps the iChannel bindings in its own UI rather than in the
-code. Domino's editor has the same tabs, so you transcribe it one for one:
+**Paste the link.** Shaders tab → **Import…** → *From Shadertoy link…* → paste
+any `shadertoy.com/view/...` URL (or just the ID). Domino fetches it and wires
+everything up: each Buffer becomes a pass, the Common tab is carried across, and
+every iChannel is bound to whatever the original used.
 
-1. Open the editor (**Edit**, or press **E**) and press **New** if you're
-   starting fresh.
-2. Paste Shadertoy's **Image** tab into the Image tab here.
-3. For each Buffer the shader uses, click **+ Buffer A** (then B, C, D) and
-   paste that tab's code in.
-4. If the shader has a **Common** tab, click **+ Common** and paste it there.
-   That code is prepended to every pass, exactly as Shadertoy does it.
-5. Set the **iChannel** dropdowns per tab to match what Shadertoy shows beneath
-   its editor — usually a Buffer for feedback, or Audio.
-6. **Ctrl+Enter** to compile, **Ctrl+S** to save.
+Audio inputs are the one deliberate change — a shader that played a fixed
+Shadertoy track now listens to **your** system audio instead.
+
+**First time only**, it asks for a Shadertoy API key. The key is free: sign in
+at shadertoy.com, open your profile → **App Settings**, and create one
+([instructions](https://www.shadertoy.com/howto#q2)). It is stored locally in
+your settings and only ever sent to shadertoy.com. There is no unauthenticated
+way to read shaders, so this step is unavoidable.
+
+Imports carry an attribution header naming the shader, its author and the source
+URL. Shadertoy shaders are CC BY-NC-SA 3.0 by default unless their author says
+otherwise — keep the credit if you pass one on.
+
+**What can't come across**, and you'll be told when it happens:
+
+| Shadertoy feature | What Domino does |
+|---|---|
+| Textures (`Abstract 1`, noise images, etc.) | Substitutes procedural noise and warns — the shader may look different |
+| Sound pass | Skipped. Domino visualizes audio; it doesn't synthesize it |
+| Cubemap / volume / video / webcam | Left unbound, with a warning |
+| Keyboard input | Unsupported, with a warning |
+
+If a shader has no audio input at all, Domino says so — it will render but won't
+react until you point an iChannel at Audio.
+
+### Doing it by hand
+
+You can also transcribe a shader tab by tab. The editor has the same tabs
+Shadertoy does — Common, Buffer A–D, Image — with the iChannel bindings as
+dropdowns beneath them. **+ Buffer A** adds a pass, **+ Common** adds the shared
+block, **Ctrl+Enter** compiles, **Ctrl+S** saves.
 
 Errors are reported per tab: a mistake in Common marks the Common tab, and
-mistakes in a pass are mapped back to that pass's own line numbers even though
-Common was prepended to it.
+mistakes in a pass map back to that pass's own line numbers even though Common
+was prepended to it.
 
-**On disk** it's still one `.glsl` file. The tabs are stored as directives, so a
+**On disk** it's still one `.glsl` file. Tabs are stored as directives, so a
 shader stays a single file you can copy or mail:
 
 ```glsl
@@ -134,18 +156,13 @@ void mainImage(out vec4 o, in vec2 u) { ... }
 ```
 
 You never have to write those by hand — the editor does — but the format is
-plain enough to edit in any text editor. Channel sources are `audio`, `noise`,
-`bufferA`–`bufferD`, or `none`, and bindings that match the obvious default are
+plain enough to edit anywhere. Channel sources are `audio`, `noise`,
+`bufferA`–`bufferD`, or `none`, and bindings matching the obvious default are
 left out. A file with no directives is a plain single-pass shader, so pasting
 just an Image tab still works untouched.
 
 Feedback buffers are what make trails, fluid advection and reaction-diffusion
 possible; `Ink Fluid` and `Particle Trails` in the bundled library both use one.
-
-**What doesn't come across:** Shadertoy's **Sound** and **Cubemap** tabs aren't
-supported, and neither are its bundled image textures — a shader that binds
-`iChannel0` to "Abstract 1" or a specific texture will need that channel pointed
-at `noise` or reworked.
 
 ### Runs MilkDrop presets
 
@@ -321,6 +338,7 @@ test/
   eel.test.ts     NS-EEL semantics (53 cases)
   milk.test.ts    Parser, serializer, HLSL translation (71 cases)
   shader.test.ts  Pass model, directives, round-trip serialising (68 cases)
+  import.test.ts  Shadertoy URL parsing, pass and channel mapping (43 cases)
   smoke.cjs       Boots the real app, loads every visual, verifies audio and
                   fullscreen end to end
 ```
@@ -330,7 +348,7 @@ test/
 ## Tests
 
 ```bash
-npm test           # 192 unit tests: EEL, .milk parser, HLSL, shader documents
+npm test           # 235 unit tests: EEL, .milk parser, HLSL, shader documents
 npm run test:smoke # boots the real app end to end
 npm run typecheck
 ```

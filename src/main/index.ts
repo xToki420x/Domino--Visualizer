@@ -13,6 +13,7 @@ import {
   revealLibrary,
 } from './library';
 import { getSettings, setSettings, flushSettings } from './settings';
+import { fetchShadertoy } from './shadertoy';
 
 const isDev = !app.isPackaged;
 
@@ -312,6 +313,12 @@ function registerIpc(): void {
   ipcMain.handle('library:reveal', async (_e, kind: unknown) => {
     assertKind(kind);
     await revealLibrary(kind);
+  });
+
+  ipcMain.handle('shadertoy:fetch', async (_e, id: unknown) => {
+    // The key stays in the main process; the renderer never receives it.
+    const settings = await getSettings();
+    return await fetchShadertoy(String(id ?? ''), settings.shadertoyApiKey);
   });
 
   ipcMain.handle('dialog:openAudioFile', async (): Promise<string | null> => {

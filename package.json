@@ -15,10 +15,11 @@
     "test:eel": "esbuild test/eel.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/eel.test.cjs --log-level=warning && node node_modules/.cache/eel.test.cjs",
     "test:milk": "esbuild test/milk.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/milk.test.cjs --log-level=warning && node node_modules/.cache/milk.test.cjs",
     "test:smoke": "electron test/smoke.cjs",
-    "test": "npm run test:eel && npm run test:milk && npm run test:shader",
+    "test": "npm run test:eel && npm run test:milk && npm run test:shader && npm run test:import",
     "test:shader": "esbuild test/shader.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/shader.test.cjs --log-level=warning && node node_modules/.cache/shader.test.cjs",
     "gen:presets": "node tools/generate-presets.mjs",
-    "gen:icon": "electron tools/make-icon.cjs"
+    "gen:icon": "electron tools/make-icon.cjs",
+    "test:import": "esbuild test/import.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/import.test.cjs --log-level=warning && node node_modules/.cache/import.test.cjs"
   },
   "dependencies": {
     "monaco-editor": "^0.52.2"
