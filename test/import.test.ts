@@ -43,6 +43,35 @@ eq('with query string', parseShadertoyId('https://www.shadertoy.com/view/XsXXDn?
 eq('trailing slash', parseShadertoyId('https://www.shadertoy.com/view/XsXXDn/'), 'XsXXDn');
 eq('surrounding whitespace', parseShadertoyId('  https://www.shadertoy.com/view/XsXXDn  '), 'XsXXDn');
 eq('bare id', parseShadertoyId('XsXXDn'), 'XsXXDn');
+// People copy the embed snippet off a shader page far more often than they
+// copy a clean URL, so the whole HTML blob has to work. The pattern is a
+// search rather than a full match, which is what makes this fall out - locked
+// in here so tightening it later cannot silently break pasting an iframe.
+eq(
+  'full iframe embed snippet',
+  parseShadertoyId(
+    '<iframe width="640" height="360" frameborder="0" ' +
+      'src="https://www.shadertoy.com/embed/XtdGR7?gui=true&t=10&paused=true&muted=false" ' +
+      'allowfullscreen></iframe>',
+  ),
+  'XtdGR7',
+);
+eq(
+  'embed URL with playback params',
+  parseShadertoyId('https://www.shadertoy.com/embed/XtdGR7?gui=true&t=10&paused=true'),
+  'XtdGR7',
+);
+eq(
+  'markdown link',
+  parseShadertoyId('[cool shader](https://www.shadertoy.com/view/XtdGR7)'),
+  'XtdGR7',
+);
+eq(
+  'URL in a sentence',
+  parseShadertoyId('check this out https://www.shadertoy.com/view/XtdGR7 pretty good'),
+  'XtdGR7',
+);
+
 eq('rejects a non-shadertoy URL', parseShadertoyId('https://example.com/view/XsXXDn'), null);
 eq('rejects prose', parseShadertoyId('please import my shader'), null);
 eq('rejects empty', parseShadertoyId('   '), null);
