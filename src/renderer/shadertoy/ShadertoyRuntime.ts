@@ -14,7 +14,8 @@ export type ChannelSource =
   | { type: 'none' }
   | { type: 'audio' }
   | { type: 'buffer'; buffer: BufferId }
-  | { type: 'noise' };
+  | { type: 'noise' }
+  | { type: 'webcam' };
 
 export interface PassDef {
   id: PassId;
@@ -46,6 +47,11 @@ const RENDER_ORDER: PassId[] = ['A', 'B', 'C', 'D', 'Image'];
 export interface RenderContext {
   audio: AudioFrame;
   audioTexture: WebGLTexture;
+  /** Always a valid texture; black until the camera is running. */
+  cameraTexture: WebGLTexture;
+  cameraWidth: number;
+  cameraHeight: number;
+  cameraMirror: boolean;
   mouse: { x: number; y: number; clickX: number; clickY: number; down: boolean };
   sensitivity: number;
   sampleRate: number;
@@ -219,6 +225,8 @@ export class ShadertoyRuntime {
       }
       case 'noise':
         return this.getNoiseTexture();
+      case 'webcam':
+        return ctx.cameraTexture;
       default:
         return null;
     }
@@ -270,6 +278,10 @@ export class ShadertoyRuntime {
     program.float('iPeak', a.peak);
     program.float('iSensitivity', ctx.sensitivity);
     program.float('iAudioLevel', a.vol);
+
+    program.vec3('iCameraResolution', ctx.cameraWidth, ctx.cameraHeight, 1);
+    program.float('iCameraActive', ctx.cameraWidth > 0 ? 1 : 0);
+    program.float('iCameraMirror', ctx.cameraMirror ? 1 : 0);
   }
 
   /**
@@ -324,6 +336,9 @@ export class ShadertoyRuntime {
         } else if (channel.type === 'noise') {
           channelRes[i * 3] = 256;
           channelRes[i * 3 + 1] = 256;
+        } else if (channel.type === 'webcam') {
+          channelRes[i * 3] = ctx.cameraWidth;
+          channelRes[i * 3 + 1] = ctx.cameraHeight;
         }
         channelRes[i * 3 + 2] = 1;
       }

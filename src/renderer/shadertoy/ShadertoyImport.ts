@@ -271,10 +271,14 @@ function resolveChannels(
         warnings.push(`${label}: iChannel${channel} used keyboard input, which is unsupported.`);
         break;
 
+      case 'webcam':
+        // Domino has a real camera input, so this one maps across directly.
+        channels[channel] = { type: 'webcam' };
+        break;
+
       case 'cubemap':
       case 'volume':
       case 'video':
-      case 'webcam':
         warnings.push(
           `${label}: iChannel${channel} used ${ctype}, which is unsupported. Left unbound.`,
         );

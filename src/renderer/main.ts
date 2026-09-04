@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS, type AppSettings, type LibraryEntry, type LibraryKind } from '@shared/types';
 import { AudioEngine } from './audio/AudioEngine';
+import { CameraSource } from './video/CameraSource';
 import type { AudioFrame } from './audio/types';
 import { AudioTexture } from './gl/AudioTexture';
 import { Framebuffer } from './gl/Framebuffer';
@@ -65,6 +66,7 @@ class Domino {
   private glctx: GLContext;
   private quad: FullscreenQuad;
   private audio = new AudioEngine();
+  private camera!: CameraSource;
   private audioTexture: AudioTexture;
   private shadertoy: ShadertoyRuntime;
   private milkdrop: MilkdropEngine;
@@ -111,6 +113,7 @@ class Domino {
     this.glctx = new GLContext(this.canvas);
     this.quad = new FullscreenQuad(this.glctx.gl);
     this.audioTexture = new AudioTexture(this.glctx.gl);
+    this.camera = new CameraSource(this.glctx.gl);
     this.shadertoy = new ShadertoyRuntime(this.glctx);
     this.milkdrop = new MilkdropEngine(this.glctx, this.quad);
     this.post = new PostProcessor(this.glctx, this.quad);
@@ -181,6 +184,9 @@ class Domino {
         this.setImmersive(false);
       }
     });
+
+    // Restore the camera if it was on last session.
+    if (this.settings.cameraEnabled) void this.syncCamera();
 
     requestAnimationFrame(this.frame);
   }
@@ -316,8 +322,46 @@ class Domino {
     if (patch.showFps !== undefined) {
       el('hud').style.display = this.settings.showFps ? '' : 'none';
     }
+    if (patch.cameraEnabled !== undefined || patch.cameraDeviceId !== undefined) {
+      void this.syncCamera();
+    }
 
     void window.domino.settings.set(patch);
+  }
+
+  /**
+   * Bring the camera in line with the settings.
+   *
+   * Device changes restart the stream, so this both starts and stops rather
+   * than having separate paths that could disagree about the current state.
+   */
+  private async syncCamera(): Promise<void> {
+    const want = this.settings.cameraEnabled;
+
+    if (!want) {
+      this.camera.stop();
+      return;
+    }
+
+    try {
+      await this.camera.start(this.settings.cameraDeviceId || undefined);
+      const status = this.camera.getStatus();
+      this.toast.show(`Camera on: ${status.label} (${status.width}x${status.height})`);
+
+      // Labels are blank until permission has been granted, so the device list
+      // is only worth populating after a successful start.
+      this.display.cameraDevices = (await this.camera.listDevices()).map((d) => ({
+        deviceId: d.deviceId,
+        label: d.label,
+      }));
+      this.display.render();
+    } catch (err) {
+      this.settings.cameraEnabled = false;
+      void window.domino.settings.set({ cameraEnabled: false });
+      this.display.setSettings(this.settings);
+      this.display.render();
+      this.toast.show(`Camera failed: ${(err as Error).message}`, 'error');
+    }
   }
 
   private async resetDisplaySettings(): Promise<void> {
@@ -1219,6 +1263,15 @@ class Domino {
         case 'I':
           this.flashPreset();
           break;
+        case 'c':
+        case 'C': {
+          const next = !this.settings.cameraEnabled;
+          this.settings.cameraEnabled = next;
+          void window.domino.settings.set({ cameraEnabled: next });
+          this.display.setSettings(this.settings);
+          void this.syncCamera();
+          break;
+        }
         default:
           break;
       }
@@ -1313,6 +1366,7 @@ class Domino {
 
     const audio = this.audio.analyse();
     this.audioTexture.update(audio);
+    this.camera.update();
 
     const gl = this.glctx.gl;
     const width = this.glctx.width;
@@ -1330,6 +1384,10 @@ class Domino {
         {
           audio,
           audioTexture: this.audioTexture.texture,
+          cameraTexture: this.camera.texture,
+          cameraWidth: this.camera.getStatus().width,
+          cameraHeight: this.camera.getStatus().height,
+          cameraMirror: this.settings?.cameraMirror ?? true,
           mouse: this.mouse,
           sensitivity: this.settings?.sensitivity ?? 1,
           sampleRate: 44100,

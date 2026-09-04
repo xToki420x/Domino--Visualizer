@@ -33,6 +33,7 @@ function channelOptions(doc: ShaderProjectDoc): Option[] {
     { value: 'none', label: '— none —' },
     { value: 'audio', label: 'Audio (FFT + wave)' },
     { value: 'noise', label: 'Noise texture' },
+    { value: 'webcam', label: 'Webcam' },
   ];
   // Only offer buffers that actually exist, so a binding can't dangle.
   for (const pass of doc.passes) {
@@ -45,6 +46,7 @@ function channelOptions(doc: ShaderProjectDoc): Option[] {
 function nameToChannel(value: string): ChannelSource {
   if (value === 'audio') return { type: 'audio' };
   if (value === 'noise') return { type: 'noise' };
+  if (value === 'webcam') return { type: 'webcam' };
   const match = /^buffer([ABCD])$/.exec(value);
   if (match) return { type: 'buffer', buffer: match[1] as 'A' | 'B' | 'C' | 'D' };
   return { type: 'none' };

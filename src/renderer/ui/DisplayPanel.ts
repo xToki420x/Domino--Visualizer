@@ -133,6 +133,18 @@ const CONTROLS: ControlSpec[] = [
 
 const TOGGLES: ToggleSpec[] = [
   {
+    key: 'cameraEnabled',
+    label: 'Webcam Input',
+    group: 'Camera',
+    help: 'Turns the camera on so shaders can sample it. Bind an iChannel to Webcam in the editor.',
+  },
+  {
+    key: 'cameraMirror',
+    label: 'Mirror',
+    group: 'Camera',
+    help: 'Selfie view. Shaders read this as iCameraMirror; the dominoCamera() helper applies it for you.',
+  },
+  {
     key: 'toneMap',
     label: 'Filmic Tone Map',
     group: 'Image',
@@ -146,7 +158,7 @@ const TOGGLES: ToggleSpec[] = [
   },
 ];
 
-const GROUP_ORDER = ['Image', 'Quality', 'Playback'];
+const GROUP_ORDER = ['Image', 'Camera', 'Quality', 'Playback'];
 
 export class DisplayPanel {
   private host: HTMLElement;
@@ -155,6 +167,8 @@ export class DisplayPanel {
 
   onChange: ((patch: Partial<AppSettings>) => void) | null = null;
   onReset: (() => void) | null = null;
+  /** Devices offered in the camera picker. Empty until permission is granted. */
+  cameraDevices: Array<{ deviceId: string; label: string }> = [];
 
   constructor(host: HTMLElement, settings: AppSettings) {
     this.host = host;
@@ -186,6 +200,7 @@ export class DisplayPanel {
 
       for (const spec of controls) section.appendChild(this.buildSlider(spec));
       for (const spec of toggles) section.appendChild(this.buildToggle(spec));
+      if (group === 'Camera') section.appendChild(this.buildCameraPicker());
 
       fragment.appendChild(section);
     }
@@ -257,6 +272,47 @@ export class DisplayPanel {
 
     row.append(label, input);
     this.rows.set(spec.key as string, { input, value: label });
+    return row;
+  }
+
+  /**
+   * Camera device picker.
+   *
+   * Device labels are blank until camera permission has been granted once, so
+   * before that the list shows generic names. Turning the camera on populates
+   * it properly on the next render.
+   */
+  private buildCameraPicker(): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'param';
+
+    const label = document.createElement('span');
+    label.className = 'param-label';
+    label.textContent = 'Device';
+
+    const select = document.createElement('select');
+    select.className = 'chan-select';
+    select.style.gridColumn = '1 / -1';
+    select.style.width = '100%';
+
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = this.cameraDevices.length ? 'Default camera' : 'Default camera (turn on to list)';
+    select.appendChild(auto);
+
+    this.cameraDevices.forEach((device, i) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Camera ${i + 1}`;
+      select.appendChild(option);
+    });
+
+    select.value = String(this.settings.cameraDeviceId ?? '');
+    select.addEventListener('change', () => {
+      this.onChange?.({ cameraDeviceId: select.value });
+    });
+
+    row.append(label, document.createElement('span'), select);
     return row;
   }
 

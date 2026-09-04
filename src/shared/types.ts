@@ -77,6 +77,11 @@ export interface AppSettings {
    * Stored locally in settings.json and only ever sent to shadertoy.com.
    */
   shadertoyApiKey: string;
+
+  /* Camera input */
+  cameraEnabled: boolean;
+  cameraDeviceId: string;
+  cameraMirror: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -106,6 +111,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lastSource: 'none',
   lastVisual: null,
   shadertoyApiKey: '',
+  cameraEnabled: false,
+  cameraDeviceId: '',
+  cameraMirror: true,
 };
 
 /** The API surface exposed on `window.domino` by the preload script. */

@@ -75,6 +75,7 @@ function parseChannel(raw: string, warnings: string[]): ChannelSource {
   const value = raw.trim().toLowerCase();
   if (value === 'audio' || value === 'fft' || value === 'sound') return { type: 'audio' };
   if (value === 'noise' || value === 'rand') return { type: 'noise' };
+  if (value === 'webcam' || value === 'camera' || value === 'cam') return { type: 'webcam' };
   if (value === 'none' || value === 'off') return { type: 'none' };
 
   const match = /^(?:buffer|buf)?_?([abcd])$/.exec(value);
@@ -92,6 +93,8 @@ export function channelToName(channel: ChannelSource): string {
       return 'audio';
     case 'noise':
       return 'noise';
+    case 'webcam':
+      return 'webcam';
     case 'buffer':
       return `buffer${channel.buffer}`;
     default:

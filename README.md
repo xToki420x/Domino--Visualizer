@@ -164,6 +164,23 @@ just an Image tab still works untouched.
 Feedback buffers are what make trails, fluid advection and reaction-diffusion
 possible; `Ink Fluid` and `Particle Trails` in the bundled library both use one.
 
+### Takes your webcam as a shader input
+
+Turn it on in **Display > Camera**, or press **C**. Bind any iChannel to
+**Webcam** in the editor and sample it:
+
+```glsl
+//! channel1 = webcam
+
+vec3 c = dominoCamera(iChannel1, uv);   // mirroring handled for you
+```
+
+Shaders also get `iCameraResolution`, `iCameraActive` and `iCameraMirror`.
+`Camera Bloom` in the bundled library is a worked example: chromatic split,
+bass-driven pinch, beat-gated bloom and a spectrum bar over the live feed.
+
+Shadertoy shaders that used a `webcam` input map onto this directly on import.
+
 ### Runs MilkDrop presets
 
 **122 presets ship with the app**, spanning MilkDrop 1-style equation presets
@@ -297,6 +314,7 @@ panels bigger. **H** hides the interface without going fullscreen.
 | `F` / double-click | Immersive fullscreen (no interface) |
 | `H` | Hide the interface, stay windowed |
 | `I` | Flash the current preset name |
+| `C` | Toggle the webcam input |
 | `Esc` | Close editor / leave fullscreen |
 | `Ctrl+Enter` | Recompile (in editor) |
 | `Ctrl+S` | Save |

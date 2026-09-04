@@ -48,6 +48,19 @@ uniform float     iPeak;
 uniform float     iSensitivity;
 uniform float     iAudioLevel;
 
+// ---- Camera -------------------------------------------------------------
+// Bind an iChannel to "webcam" to sample the live feed. These describe it.
+uniform vec3      iCameraResolution;  // pixels; zero when no camera is running
+uniform float     iCameraActive;      // 1.0 while a camera is streaming
+uniform float     iCameraMirror;      // 1.0 when the user wants a selfie view
+
+// Sample the camera with mirroring and aspect already handled. Pass the
+// channel the webcam is bound to.
+vec3 dominoCamera(sampler2D cam, vec2 uv) {
+  if (iCameraMirror > 0.5) uv.x = 1.0 - uv.x;
+  return texture(cam, uv).rgb;
+}
+
 // Convenience: spectrum/waveform lookups with the texture layout handled.
 float dominoSpectrum(float x) { return texture(iAudioData, vec2(clamp(x, 0.0, 1.0), 0.25)).r; }
 float dominoWave(float x)     { return texture(iAudioData, vec2(clamp(x, 0.0, 1.0), 0.75)).r * 2.0 - 1.0; }
