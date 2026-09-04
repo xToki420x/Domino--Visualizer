@@ -121,7 +121,8 @@ otherwise — keep the credit if you pass one on.
 |---|---|
 | Textures (`Abstract 1`, noise images, etc.) | Substitutes procedural noise and warns — the shader may look different |
 | Sound pass | Skipped. Domino visualizes audio; it doesn't synthesize it |
-| Cubemap / volume / video / webcam | Left unbound, with a warning |
+| Cubemap / volume / video | Left unbound, with a warning |
+| Webcam | Maps directly onto Domino's own camera input |
 | Keyboard input | Unsupported, with a warning |
 
 If a shader has no audio input at all, Domino says so — it will render but won't
