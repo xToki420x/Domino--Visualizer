@@ -9,16 +9,6 @@
 
 namespace domino {
 
-/**
- * CLSID of the media source DLL that Windows loads in the Frame Server.
- *
- * This is a fixed, arbitrary GUID that identifies our source. It must match
- * the one the DLL registers under, or MFCreateVirtualCamera will succeed and
- * then fail to produce frames because the Frame Server cannot instantiate
- * anything.
- */
-extern const wchar_t kSourceClsidString[];
-
 class VirtualCamera {
  public:
   VirtualCamera() = default;
@@ -41,16 +31,30 @@ class VirtualCamera {
 };
 
 /**
- * Register the media source DLL under HKCU so the Frame Server can create it.
+ * Register the media source DLL machine-wide so the Frame Server can create it.
  *
- * Per-user registration deliberately: it needs no administrator rights, and a
- * visualiser should not be asking for elevation. The trade-off is that the
- * camera exists only for the user who installed it, which is the right default.
+ * This needs administrator rights, which is not a choice: the Frame Server
+ * runs as LocalService and cannot see a per-user registration. The installer
+ * does it once, so the app itself never has to ask for elevation.
  */
 bool RegisterSourceDll(const std::wstring& dllPath, std::wstring* error);
 bool UnregisterSourceDll(std::wstring* error);
 
-/** True when the DLL is registered and the path on record still exists. */
+/**
+ * Ask Windows to run regsvr32 elevated against the media source DLL.
+ *
+ * Registration needs administrator rights, and the honest way to get them is
+ * one visible UAC prompt for a standard Windows command the user can recognise
+ * - not a silently elevated helper, and not forcing every install to run as
+ * administrator for a feature most people will never turn on.
+ *
+ * Returns false if the user declines the prompt, which is a normal outcome
+ * rather than an error worth shouting about.
+ */
+bool RegisterSourceElevated(const std::wstring& dllPath, bool unregister,
+                            std::wstring* error);
+
+/** True when the DLL is registered machine-wide and that path still exists. */
 bool IsSourceRegistered(std::wstring* registeredPath);
 
 }  // namespace domino

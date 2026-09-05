@@ -6,6 +6,7 @@ import type {
   LibraryKind,
   DominoApi,
   ReadResult,
+  VirtualCameraStatus,
   WriteResult,
 } from '@shared/types';
 
@@ -48,6 +49,25 @@ const api: DominoApi = {
     get: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
     set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:set', patch),
+  },
+
+  virtualCamera: {
+    status: (): Promise<VirtualCameraStatus> => ipcRenderer.invoke('vcam:status'),
+    start: (
+      width: number,
+      height: number,
+      fps: number,
+      name: string,
+    ): Promise<VirtualCameraStatus> =>
+      ipcRenderer.invoke('vcam:start', width, height, fps, name),
+    stop: (): Promise<VirtualCameraStatus> => ipcRenderer.invoke('vcam:stop'),
+    register: (unregister = false): Promise<VirtualCameraStatus> =>
+      ipcRenderer.invoke('vcam:register', unregister),
+    listCameras: (): Promise<string[]> => ipcRenderer.invoke('vcam:listCameras'),
+    // `send`, so a frame never makes the render loop wait for the main process.
+    sendFrame: (frame: Uint8Array): void => {
+      ipcRenderer.send('vcam:frame', frame);
+    },
   },
 
   window: {

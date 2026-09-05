@@ -33,8 +33,19 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The virtual camera is a C++ Node addon plus a Media Foundation media
+      # source DLL. Both are shipped inside the installer, so they have to be
+      # built before packaging rather than left to the user.
+      - name: Build native modules
+        run: npm run build:native
+
       - name: Unit tests
         run: npm test
+
+      # Covers the shared-memory channel and drives the media source DLL with a
+      # real source reader. Needs no administrator rights, so it runs here.
+      - name: Virtual camera tests
+        run: npm run test:native
 
       - name: Build
         run: npm run build

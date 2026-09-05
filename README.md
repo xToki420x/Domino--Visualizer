@@ -182,6 +182,26 @@ bass-driven pinch, beat-gated bloom and a spectrum bar over the live feed.
 
 Shadertoy shaders that used a `webcam` input map onto this directly on import.
 
+### Becomes a webcam of its own
+
+Turn on **Publish as Webcam** in **Display > Virtual Camera** and Domino shows
+up as a camera in Zoom, Discord, Meet, OBS or anything else that takes one. No
+capture card, no screen share, no OBS virtual-camera plugin in between - this
+is a Media Foundation media source written for Domino.
+
+Frames leave the GPU already packed as NV12 by a fragment shader and are read
+back through pixel buffer objects, so publishing does not stall the visuals.
+They cross into the Windows Frame Server through a lock-free shared-memory ring
+- a stalled conferencing app can never slow the render loop down, it just misses
+a frame.
+
+Windows loads the camera driver inside its own service process, which means the
+COM registration has to be machine-wide. **Register camera driver** in the same
+panel does that with one Windows administrator prompt; it runs the standard
+`regsvr32` against the shipped DLL and is needed exactly once. There is an
+**Unregister** button beside it, because the uninstaller cannot remove it
+without elevation of its own.
+
 ### Runs MilkDrop presets
 
 **122 presets ship with the app**, spanning MilkDrop 1-style equation presets

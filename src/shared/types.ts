@@ -82,6 +82,14 @@ export interface AppSettings {
   cameraEnabled: boolean;
   cameraDeviceId: string;
   cameraMirror: boolean;
+
+  /* Camera output: Domino published as a webcam */
+  virtualCameraEnabled: boolean;
+  /** "WIDTHxHEIGHT". Fixed for the session - consumers negotiate it once. */
+  virtualCameraSize: string;
+  virtualCameraFps: number;
+  /** What the device is called in other applications. */
+  virtualCameraName: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -114,7 +122,29 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cameraEnabled: false,
   cameraDeviceId: '',
   cameraMirror: true,
+
+  virtualCameraEnabled: false,
+  virtualCameraSize: '1280x720',
+  virtualCameraFps: 30,
+  virtualCameraName: 'Domino Visualizer',
 };
+
+/** What the main process knows about the Windows virtual camera. */
+export interface VirtualCameraStatus {
+  /** The native module compiled and loaded on this machine. */
+  available: boolean;
+  /** The media source is registered machine-wide and its DLL still exists. */
+  registered: boolean;
+  running: boolean;
+  width: number;
+  height: number;
+  fps: number;
+  framesWritten: number;
+  registeredPath: string;
+  /** The DLL a user would hand to regsvr32; empty when this build has none. */
+  sourcePath: string;
+  error: string;
+}
 
 /** The API surface exposed on `window.domino` by the preload script. */
 export interface DominoApi {
@@ -158,6 +188,19 @@ export interface DominoApi {
     setAlwaysOnTop(v: boolean): Promise<boolean>;
     minimize(): Promise<void>;
     close(): Promise<void>;
+  };
+
+  /** Publishes the visualiser as a webcam other applications can select. */
+  virtualCamera: {
+    status(): Promise<VirtualCameraStatus>;
+    start(width: number, height: number, fps: number, name: string): Promise<VirtualCameraStatus>;
+    stop(): Promise<VirtualCameraStatus>;
+    /** Prompts for administrator rights to register the camera driver. */
+    register(unregister?: boolean): Promise<VirtualCameraStatus>;
+    /** Every capture device Windows can see, for confirming ours appeared. */
+    listCameras(): Promise<string[]>;
+    /** Fire-and-forget: one NV12 frame, already packed by the GPU. */
+    sendFrame(frame: Uint8Array): void;
   };
 
   /** Fires when the main process asks the renderer to do something (menu, hotkey). */

@@ -202,6 +202,11 @@ export class Program {
     if (l) this.gl.uniform1i(l, v);
     return this;
   }
+  ivec2(name: string, x: number, y: number): this {
+    const l = this.loc(name);
+    if (l) this.gl.uniform2i(l, x, y);
+    return this;
+  }
   float(name: string, v: number): this {
     const l = this.loc(name);
     if (l) this.gl.uniform1f(l, v);

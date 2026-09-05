@@ -53,6 +53,14 @@
       {
         "from": "resources",
         "to": "resources"
+      },
+      {
+        "from": "native/build/Release",
+        "to": "native",
+        "filter": [
+          "domino_vcam.node",
+          "domino_vcam_source.dll"
+        ]
       }
     ],
     "win": {

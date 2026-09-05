@@ -81,6 +81,14 @@ class FrameReader {
   uint32_t Heartbeat() const {
     return view_ ? reinterpret_cast<const SharedHeader*>(view_)->heartbeat : 0;
   }
+  // The media source advertises this as the camera frame rate, so it has to
+  // come from the producer rather than being assumed.
+  uint32_t FrameRateNum() const {
+    return view_ ? reinterpret_cast<const SharedHeader*>(view_)->frameRateNum : 0;
+  }
+  uint32_t FrameRateDen() const {
+    return view_ ? reinterpret_cast<const SharedHeader*>(view_)->frameRateDen : 0;
+  }
 
   /** Block until a new frame or `timeoutMs` elapses. Never required. */
   void WaitForFrame(DWORD timeoutMs) const {

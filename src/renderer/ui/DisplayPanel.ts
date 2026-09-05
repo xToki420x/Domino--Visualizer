@@ -1,4 +1,4 @@
-import type { AppSettings } from '@shared/types';
+import type { AppSettings, VirtualCameraStatus } from '@shared/types';
 
 /**
  * The Display tab: image controls plus render quality.
@@ -158,7 +158,10 @@ const TOGGLES: ToggleSpec[] = [
   },
 ];
 
-const GROUP_ORDER = ['Image', 'Camera', 'Quality', 'Playback'];
+const GROUP_ORDER = ['Image', 'Camera', 'Virtual Camera', 'Quality', 'Playback'];
+
+const VCAM_SIZES = ['640x480', '1280x720', '1920x1080'];
+const VCAM_RATES = [24, 30, 60];
 
 export class DisplayPanel {
   private host: HTMLElement;
@@ -169,6 +172,10 @@ export class DisplayPanel {
   onReset: (() => void) | null = null;
   /** Devices offered in the camera picker. Empty until permission is granted. */
   cameraDevices: Array<{ deviceId: string; label: string }> = [];
+  /** Latest word from the main process; null until the first status query. */
+  virtualCameraStatus: VirtualCameraStatus | null = null;
+  onVirtualCamera: ((on: boolean) => void) | null = null;
+  onVirtualCameraRegister: ((unregister: boolean) => void) | null = null;
 
   constructor(host: HTMLElement, settings: AppSettings) {
     this.host = host;
@@ -201,6 +208,7 @@ export class DisplayPanel {
       for (const spec of controls) section.appendChild(this.buildSlider(spec));
       for (const spec of toggles) section.appendChild(this.buildToggle(spec));
       if (group === 'Camera') section.appendChild(this.buildCameraPicker());
+      if (group === 'Virtual Camera') this.buildVirtualCamera(section);
 
       fragment.appendChild(section);
     }
@@ -214,6 +222,131 @@ export class DisplayPanel {
     fragment.appendChild(reset);
 
     this.host.appendChild(fragment);
+  }
+
+  /**
+   * Publishing Domino as a webcam.
+   *
+   * Built by hand rather than from the toggle table because most of what
+   * matters here is live state - whether the driver is registered, whether
+   * anything is actually being sent - and a plain settings checkbox would hide
+   * the one thing a user needs to know when it does not work.
+   */
+  private buildVirtualCamera(section: HTMLElement): void {
+    const status = this.virtualCameraStatus;
+
+    const row = document.createElement('label');
+    row.className = 'param param-toggle';
+
+    const label = document.createElement('span');
+    label.className = 'param-label';
+    label.textContent = 'Publish as Webcam';
+    label.title =
+      'Makes Domino selectable as a camera in Zoom, Discord, Meet and anything ' +
+      'else that takes a webcam.';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = Boolean(this.settings.virtualCameraEnabled);
+    input.disabled = !status?.available || !status?.registered;
+    input.addEventListener('change', () => this.onVirtualCamera?.(input.checked));
+
+    row.append(label, input);
+    section.appendChild(row);
+
+    section.appendChild(
+      this.buildChoice('Size', VCAM_SIZES, String(this.settings.virtualCameraSize), (v) =>
+        this.onChange?.({ virtualCameraSize: v }),
+      ),
+    );
+    section.appendChild(
+      this.buildChoice(
+        'Frame Rate',
+        VCAM_RATES.map((r) => String(r)),
+        String(this.settings.virtualCameraFps),
+        (v) => this.onChange?.({ virtualCameraFps: Number(v) }),
+      ),
+    );
+
+    // Registration is a one-time administrator step, so the button only shows
+    // when it is actually the thing standing in the way.
+    if (status?.available && !status.registered) {
+      const register = document.createElement('button');
+      register.className = 'btn btn-ghost';
+      register.style.width = '100%';
+      register.textContent = 'Register camera driver';
+      register.title =
+        'Runs regsvr32 as administrator. Windows will show its usual prompt.';
+      register.addEventListener('click', () => this.onVirtualCameraRegister?.(false));
+      section.appendChild(register);
+    }
+
+    // Offered while it is registered so the machine can be left clean. The
+    // uninstaller cannot do this itself: it does not run elevated.
+    if (status?.registered && !status.running) {
+      const remove = document.createElement('button');
+      remove.className = 'btn btn-ghost';
+      remove.style.width = '100%';
+      remove.textContent = 'Unregister camera driver';
+      remove.title = 'Removes the machine-wide registration. Also needs administrator rights.';
+      remove.addEventListener('click', () => this.onVirtualCameraRegister?.(true));
+      section.appendChild(remove);
+    }
+
+    const note = document.createElement('div');
+    note.className = 'param-help';
+    note.textContent = this.virtualCameraNote(status);
+    section.appendChild(note);
+  }
+
+  /** One line telling the user exactly where this stands, good or bad. */
+  private virtualCameraNote(status: VirtualCameraStatus | null): string {
+    if (!status) return 'Checking for the camera driver...';
+    if (!status.available) {
+      return status.error || 'This build of Domino has no virtual camera module.';
+    }
+    if (!status.registered) {
+      return (
+        status.error ||
+        'Windows loads the camera driver in its own process, which needs a ' +
+          'one-time machine-wide registration. This asks for administrator ' +
+          'rights once and never again.'
+      );
+    }
+    if (status.error) return status.error;
+    if (status.running) {
+      return `Live at ${status.width}x${status.height}, ${status.fps}fps. ${status.framesWritten} frames sent. Pick "${this.settings.virtualCameraName}" in your video app.`;
+    }
+    return 'Ready. Turn this on, then choose Domino as your camera.';
+  }
+
+  /** A labelled dropdown, matching the shape of the sliders above it. */
+  private buildChoice(
+    labelText: string,
+    options: string[],
+    value: string,
+    onPick: (value: string) => void,
+  ): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'param';
+
+    const label = document.createElement('span');
+    label.className = 'param-label';
+    label.textContent = labelText;
+
+    const select = document.createElement('select');
+    select.className = 'select';
+    for (const option of options) {
+      const element = document.createElement('option');
+      element.value = option;
+      element.textContent = option;
+      select.appendChild(element);
+    }
+    select.value = value;
+    select.addEventListener('change', () => onPick(select.value));
+
+    row.append(label, select);
+    return row;
   }
 
   private format(spec: ControlSpec, value: number): string {

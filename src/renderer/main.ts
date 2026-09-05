@@ -6,6 +6,7 @@ import { AudioTexture } from './gl/AudioTexture';
 import { Framebuffer } from './gl/Framebuffer';
 import { GLContext } from './gl/GLContext';
 import { PostProcessor } from './gl/PostProcessor';
+import { VirtualCameraOutput } from './video/VirtualCameraOutput';
 import type { ShaderError } from './gl/Program';
 import { FullscreenQuad } from './gl/Quad';
 import { MilkdropEngine } from './milkdrop/MilkdropEngine';
@@ -71,6 +72,9 @@ class Domino {
   private shadertoy: ShadertoyRuntime;
   private milkdrop: MilkdropEngine;
   private post: PostProcessor;
+  /** Built the first time the virtual camera is switched on, not before. */
+  private vcamOut: VirtualCameraOutput | null = null;
+  private vcamRunning = false;
   /**
    * Engines render here rather than straight to the screen, so the post stage
    * has float headroom to tone-map from. Without an HDR intermediate every
@@ -295,6 +299,66 @@ class Domino {
     this.display.render();
     this.display.onChange = (patch) => this.applyDisplayPatch(patch);
     this.display.onReset = () => this.resetDisplaySettings();
+    this.display.onVirtualCamera = (on) => void this.setVirtualCamera(on);
+    this.display.onVirtualCameraRegister = (off) => {
+      void window.domino.virtualCamera.register(off).then((status) => {
+        this.display.virtualCameraStatus = status;
+        this.display.render();
+      });
+    };
+    void this.refreshVirtualCameraStatus();
+  }
+
+  /**
+   * Turn the webcam output on or off.
+   *
+   * The GPU side is built on first use rather than at startup: it holds two
+   * render targets and a set of readback buffers, and most sessions never
+   * publish a camera at all.
+   */
+  private async setVirtualCamera(on: boolean): Promise<void> {
+    this.settings.virtualCameraEnabled = on;
+    void window.domino.settings.set({ virtualCameraEnabled: on });
+
+    if (!on) {
+      this.vcamRunning = false;
+      await window.domino.virtualCamera.stop();
+      await this.refreshVirtualCameraStatus();
+      return;
+    }
+
+    const [width, height] = this.virtualCameraSize();
+    const fps = Number(this.settings.virtualCameraFps) || 30;
+
+    if (!this.vcamOut) {
+      this.vcamOut = new VirtualCameraOutput(this.glctx, this.quad, width, height, fps);
+    } else {
+      this.vcamOut.setFormat(width, height, fps);
+    }
+
+    const status = await window.domino.virtualCamera.start(
+      width,
+      height,
+      fps,
+      this.settings.virtualCameraName || 'Domino Visualizer',
+    );
+    // Only start pushing frames if the device actually came up; otherwise we
+    // would be filling shared memory nothing is reading.
+    this.vcamRunning = status.running;
+    this.display.virtualCameraStatus = status;
+    this.display.render();
+  }
+
+  /** Parse the "WIDTHxHEIGHT" setting, falling back to 720p if it is junk. */
+  private virtualCameraSize(): [number, number] {
+    const match = /^(\d+)x(\d+)$/.exec(String(this.settings.virtualCameraSize ?? ''));
+    if (!match) return [1280, 720];
+    return [Number(match[1]), Number(match[2])];
+  }
+
+  private async refreshVirtualCameraStatus(): Promise<void> {
+    this.display.virtualCameraStatus = await window.domino.virtualCamera.status();
+    this.display.render();
   }
 
   /**
@@ -324,6 +388,12 @@ class Domino {
     }
     if (patch.cameraEnabled !== undefined || patch.cameraDeviceId !== undefined) {
       void this.syncCamera();
+    }
+    if (patch.virtualCameraSize !== undefined || patch.virtualCameraFps !== undefined) {
+      // The media type is negotiated once when the device is opened, so a size
+      // change has to republish the camera rather than quietly send frames of
+      // the wrong shape - which the media source would drop.
+      if (this.settings.virtualCameraEnabled) void this.setVirtualCamera(true);
     }
 
     void window.domino.settings.set(patch);
@@ -1410,11 +1480,35 @@ class Domino {
     }
 
     this.post.render(this.sceneTarget.texture, width, height, null);
+    this.publishCameraFrame(time * 1000);
 
     this.updateHud(audio, fps);
     this.maybeAutoSwitch(time);
     this.frameIndex++;
   };
+
+  /**
+   * Send the current frame to the virtual camera, if it is on.
+   *
+   * The frame is graded a second time at the camera's own resolution rather
+   * than copied off the screen, so the output keeps its shape no matter what
+   * size the window is - including while the panels are open.
+   */
+  private publishCameraFrame(nowMs: number): void {
+    const out = this.vcamOut;
+    if (!out || !this.vcamRunning) return;
+
+    if (out.shouldCapture(nowMs)) {
+      const status = out.getStatus();
+      this.post.render(this.sceneTarget.texture, status.width, status.height, out.sourceFbo);
+      out.capture(nowMs);
+    }
+
+    // Readback runs a frame or two behind the capture that started it, so
+    // collecting is a separate step rather than part of capture().
+    const frame = out.poll();
+    if (frame) window.domino.virtualCamera.sendFrame(frame);
+  }
 
   /** Keep the drawing buffer and all render targets matched to the canvas. */
   private syncCanvasSize(): void {

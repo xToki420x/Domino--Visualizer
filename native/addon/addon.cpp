@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "CaptureProbe.h"
 #include "FrameChannel.h"
 #include "FrameReader.h"
 #include "VirtualCamera.h"
@@ -56,6 +57,19 @@ Napi::Value RegisterSource(const Napi::CallbackInfo& info) {
   std::wstring error;
   const std::wstring path = Widen(info[0].As<Napi::String>().Utf8Value());
   return Result(env, domino::RegisterSourceDll(path, &error), error);
+}
+
+/** Register (or unregister) through an elevated regsvr32, with a UAC prompt. */
+Napi::Value RegisterSourceElevated(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsString()) {
+    return Result(env, false, L"A path to the media source DLL is required");
+  }
+  const std::wstring path = Widen(info[0].As<Napi::String>().Utf8Value());
+  const bool unregister = info.Length() > 1 && info[1].ToBoolean().Value();
+  std::wstring error;
+  return Result(env, domino::RegisterSourceElevated(path, unregister, &error),
+                error);
 }
 
 Napi::Value UnregisterSource(const Napi::CallbackInfo& info) {
@@ -175,9 +189,129 @@ Napi::Value WriteFrame(const Napi::CallbackInfo& info) {
                 error);
 }
 
+/** Every video capture device Windows can see, us included. */
+Napi::Value ListCameras(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  std::vector<std::wstring> names;
+  std::wstring error;
+  if (!domino::EnumerateCameras(&names, &error)) {
+    return Napi::Array::New(env, 0);
+  }
+  Napi::Array out = Napi::Array::New(env, names.size());
+  for (size_t i = 0; i < names.size(); i++) {
+    out.Set(static_cast<uint32_t>(i), Napi::String::New(env, Narrow(names[i])));
+  }
+  return out;
+}
+
+/**
+ * Open our own camera through Media Foundation and read one frame back.
+ *
+ * This is the end-to-end check: a frame returned here has travelled out of the
+ * renderer, through shared memory, into the media source DLL running inside
+ * the Windows Frame Server, and back to a consumer - the same journey it makes
+ * for a conferencing app.
+ */
+Napi::Value CaptureFrameForTest(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  const std::wstring name = info.Length() > 0 && info[0].IsString()
+                                ? Widen(info[0].As<Napi::String>().Utf8Value())
+                                : L"Domino";
+  const uint32_t timeoutMs = info.Length() > 1 && info[1].IsNumber()
+                                 ? info[1].As<Napi::Number>().Uint32Value()
+                                 : 5000;
+
+  domino::CapturedFrame frame;
+  std::wstring error;
+  if (!domino::CaptureOneFrame(name, timeoutMs, &frame, &error)) {
+    Napi::Object failure = Napi::Object::New(env);
+    failure.Set("ok", Napi::Boolean::New(env, false));
+    failure.Set("error", Napi::String::New(env, Narrow(error)));
+    return failure;
+  }
+
+  Napi::Object obj = Napi::Object::New(env);
+  obj.Set("ok", Napi::Boolean::New(env, true));
+  obj.Set("device", Napi::String::New(env, Narrow(frame.deviceName)));
+  obj.Set("width", Napi::Number::New(env, frame.width));
+  obj.Set("height", Napi::Number::New(env, frame.height));
+  obj.Set("data", Napi::Buffer<uint8_t>::Copy(env, frame.data.data(),
+                                              frame.data.size()));
+  return obj;
+}
+
+/** Diagnostics: load the source DLL directly and see what its class supports. */
+Napi::Value ProbeSourceClass(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsString()) {
+    Napi::Object bad = Napi::Object::New(env);
+    bad.Set("ok", Napi::Boolean::New(env, false));
+    bad.Set("error",
+            Napi::String::New(env, "A path to the media source DLL is required"));
+    return bad;
+  }
+  const std::wstring dll = Widen(info[0].As<Napi::String>().Utf8Value());
+
+  std::vector<domino::InterfaceProbe> probes;
+  int32_t createHr = 0;
+  std::wstring error;
+  const bool ok = domino::ProbeSourceClass(dll, &probes, &createHr, &error);
+
+  Napi::Object obj = Napi::Object::New(env);
+  obj.Set("ok", Napi::Boolean::New(env, ok));
+  obj.Set("createHr", Napi::Number::New(env, createHr));
+  if (!ok) obj.Set("error", Napi::String::New(env, Narrow(error)));
+
+  Napi::Object interfaces = Napi::Object::New(env);
+  for (const auto& probe : probes) {
+    interfaces.Set(Narrow(probe.name), Napi::Number::New(env, probe.hr));
+  }
+  obj.Set("interfaces", interfaces);
+  return obj;
+}
+
+/**
+ * Read a frame straight out of the media source DLL, with no Frame Server.
+ *
+ * Everything the DLL does is covered by this - starting, event handling,
+ * pulling the shared-memory frame, NV12 layout - so a break in the source
+ * shows up here rather than as a camera that mysteriously will not open.
+ */
+Napi::Value CaptureFromDllForTest(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  Napi::Object obj = Napi::Object::New(env);
+  if (info.Length() < 1 || !info[0].IsString()) {
+    obj.Set("ok", Napi::Boolean::New(env, false));
+    obj.Set("error",
+            Napi::String::New(env, "A path to the media source DLL is required"));
+    return obj;
+  }
+  const std::wstring dll = Widen(info[0].As<Napi::String>().Utf8Value());
+  const uint32_t timeoutMs = info.Length() > 1 && info[1].IsNumber()
+                                 ? info[1].As<Napi::Number>().Uint32Value()
+                                 : 5000;
+
+  domino::CapturedFrame frame;
+  std::wstring error;
+  if (!domino::CaptureFromDll(dll, timeoutMs, &frame, &error)) {
+    obj.Set("ok", Napi::Boolean::New(env, false));
+    obj.Set("error", Napi::String::New(env, Narrow(error)));
+    return obj;
+  }
+
+  obj.Set("ok", Napi::Boolean::New(env, true));
+  obj.Set("width", Napi::Number::New(env, frame.width));
+  obj.Set("height", Napi::Number::New(env, frame.height));
+  obj.Set("data",
+          Napi::Buffer<uint8_t>::Copy(env, frame.data.data(), frame.data.size()));
+  return obj;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("registerSource", Napi::Function::New(env, RegisterSource));
   exports.Set("unregisterSource", Napi::Function::New(env, UnregisterSource));
+  exports.Set("registerSourceElevated",
+              Napi::Function::New(env, RegisterSourceElevated));
   exports.Set("isRegistered", Napi::Function::New(env, IsRegistered));
   exports.Set("openChannel", Napi::Function::New(env, OpenChannel));
   exports.Set("closeChannel", Napi::Function::New(env, CloseChannel));
@@ -186,6 +320,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("stop", Napi::Function::New(env, Stop));
   exports.Set("isRunning", Napi::Function::New(env, IsRunning));
   exports.Set("writeFrame", Napi::Function::New(env, WriteFrame));
+  exports.Set("listCameras", Napi::Function::New(env, ListCameras));
+  exports.Set("probeSourceClass", Napi::Function::New(env, ProbeSourceClass));
+  exports.Set("captureFromDllForTest",
+              Napi::Function::New(env, CaptureFromDllForTest));
+  exports.Set("captureFrameForTest",
+              Napi::Function::New(env, CaptureFrameForTest));
   return exports;
 }
 

@@ -14,6 +14,7 @@ import {
 } from './library';
 import { getSettings, setSettings, flushSettings } from './settings';
 import { fetchShadertoy } from './shadertoy';
+import * as virtualCamera from './virtualcamera';
 
 const isDev = !app.isPackaged;
 
@@ -381,6 +382,27 @@ function registerIpc(): void {
   });
   ipcMain.handle('window:minimize', () => mainWindow?.minimize());
   ipcMain.handle('window:close', () => mainWindow?.close());
+
+  ipcMain.handle('vcam:status', () => virtualCamera.getStatus());
+  ipcMain.handle(
+    'vcam:start',
+    (_e, width: unknown, height: unknown, fps: unknown, name: unknown) =>
+      virtualCamera.start(Number(width), Number(height), Number(fps), String(name ?? 'Domino')),
+  );
+  ipcMain.handle('vcam:stop', () => virtualCamera.stop());
+  ipcMain.handle('vcam:register', (_e, unregister: unknown) =>
+    virtualCamera.register(Boolean(unregister)),
+  );
+  ipcMain.handle('vcam:listCameras', () => virtualCamera.listCameras());
+
+  /*
+   * `on`, not `handle`: frames arrive thirty times a second and the renderer
+   * has nothing to do with the result, so making it await a reply would only
+   * add a round trip to every frame.
+   */
+  ipcMain.on('vcam:frame', (_e, frame: unknown) => {
+    if (frame instanceof Uint8Array) virtualCamera.writeFrame(Buffer.from(frame));
+  });
 }
 
 /* ------------------------------ lifecycle ------------------------------ */
@@ -411,6 +433,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('before-quit', () => {
+    // Unpublish the camera first: an entry left in the device list after the
+    // app is gone is a camera that shows nothing.
+    virtualCamera.shutdown();
     void flushSettings();
   });
 }

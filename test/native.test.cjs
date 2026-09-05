@@ -1,13 +1,16 @@
 /**
- * Virtual-camera transport tests.
+ * Virtual-camera tests.
  *
  * Run with: npm run test:native   (requires npm run build:native first)
  *
- * These cover the shared-memory channel, which is the part that has to be
- * right before the media source DLL is built on top of it. A seqlock bug
- * produces torn frames only under load - far better to catch that here than
- * inside the Windows Frame Server, where it is close to undebuggable.
+ * Two layers. The shared-memory channel comes first, because a seqlock bug
+ * produces torn frames only under load and is close to undebuggable once it is
+ * inside the Windows Frame Server. Then the media source DLL itself, loaded
+ * directly and driven with a real source reader - which covers everything the
+ * DLL does except the hop through the Frame Server, and needs no machine-wide
+ * registration to run.
  */
+const fs = require('node:fs');
 const path = require('node:path');
 
 let passed = 0, failed = 0;
@@ -26,8 +29,10 @@ try {
 }
 
 check('module exposes its API',
-  ['registerSource','unregisterSource','isRegistered','openChannel','closeChannel',
-   'start','stop','isRunning','writeFrame'].every((k) => typeof vcam[k] === 'function'));
+  ['registerSource','registerSourceElevated','unregisterSource','isRegistered',
+   'openChannel','closeChannel','start','stop','isRunning','writeFrame',
+   'listCameras','probeSourceClass','captureFromDllForTest']
+    .every((k) => typeof vcam[k] === 'function'));
 
 check('nothing is running on a cold start', vcam.isRunning() === false);
 
@@ -81,6 +86,94 @@ check('reader detaches after close', vcam.readBackForTest() === null);
 // Registration reporting should be honest about a path that does not exist.
 const reg = vcam.isRegistered();
 check('registration state is reported', typeof reg.registered === 'boolean');
+
+const missing = vcam.registerSource('E:\\nowhere\\domino_vcam_source.dll');
+check('registering a missing DLL is refused', missing.ok === false, missing.error);
+
+check('camera enumeration returns a list', Array.isArray(vcam.listCameras()));
+
+/* ------------------------- the media source DLL ------------------------- */
+
+const DLL = path.join(__dirname, '..', 'native', 'build', 'Release', 'domino_vcam_source.dll');
+
+if (!fs.existsSync(DLL)) {
+  console.log('SKIPPED: media source DLL not built.');
+} else {
+  // Loaded straight off disk rather than through the registry, so this runs
+  // without administrator rights and works in CI.
+  const probe = vcam.probeSourceClass(DLL);
+  check('the DLL creates a media source', probe.ok === true, probe.error);
+
+  const required = [
+    'IMFMediaSource',
+    'IMFMediaSourceEx',
+    'IMFMediaEventGenerator',
+    'IMFGetService',
+    'IKsControl',
+    'IMFSampleAllocatorControl',
+  ];
+  for (const name of required) {
+    const hr = probe.interfaces?.[name];
+    check(`source implements ${name}`, hr === 0, `hr 0x${((hr ?? -1) >>> 0).toString(16)}`);
+  }
+
+  const badPath = vcam.probeSourceClass('E:\\nowhere\\domino_vcam_source.dll');
+  check('a missing DLL is reported, not crashed on', badPath.ok === false);
+
+  // With nothing publishing, the source must still deliver frames: a camera
+  // that stalls when the app is idle would hang whatever opened it.
+  vcam.closeChannel();
+  const black = vcam.captureFromDllForTest(DLL, 8000);
+  check('source produces frames with no producer', black.ok === true, black.error);
+  if (black.ok) {
+    check(
+      'fallback frame uses the declared default size',
+      black.width === 1280 && black.height === 720,
+      `${black.width}x${black.height}`,
+    );
+    check(
+      'fallback frame is black, not garbage',
+      black.data[0] === 16 && black.data[black.width * black.height] === 128,
+      `luma ${black.data[0]}, chroma ${black.data[black.width * black.height]}`,
+    );
+  }
+
+  // The real path: a frame written into shared memory has to come back out of
+  // the media source byte for byte.
+  const CW = 640;
+  const CH = 480;
+  check('channel opens at the camera size', vcam.openChannel(CW, CH, 30).ok === true);
+
+  const source = Buffer.alloc((CW * CH * 3) / 2);
+  for (let y = 0; y < CH; y++) {
+    for (let x = 0; x < CW; x++) source[y * CW + x] = (x * 3 + y * 5) & 0xff;
+  }
+  // Not 128: a neutral chroma plane would pass even if the plane were dropped.
+  source.fill(200, CW * CH);
+  check('frame is published', vcam.writeFrame(source).ok === true);
+
+  const shot = vcam.captureFromDllForTest(DLL, 8000);
+  check('source delivers a frame', shot.ok === true, shot.error);
+  if (shot.ok) {
+    check(
+      'source adopts the size the channel declares',
+      shot.width === CW && shot.height === CH,
+      `${shot.width}x${shot.height}`,
+    );
+    check('frame is the right length', shot.data.length === (CW * CH * 3) / 2,
+      `${shot.data.length} bytes`);
+    check(
+      'luma survives the round trip byte for byte',
+      Buffer.compare(shot.data.subarray(0, CW * CH), source.subarray(0, CW * CH)) === 0,
+    );
+    check(
+      'chroma survives the round trip byte for byte',
+      Buffer.compare(shot.data.subarray(CW * CH), source.subarray(CW * CH)) === 0,
+    );
+  }
+
+  vcam.closeChannel();
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
