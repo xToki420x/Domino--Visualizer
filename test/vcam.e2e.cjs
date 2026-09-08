@@ -15,7 +15,7 @@
  * that has not been done.
  */
 const { app, BrowserWindow } = require('electron');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
@@ -54,6 +54,25 @@ async function until(probe, timeoutMs, everyMs = 250) {
  * process that publishes it is not the case anyone actually runs, and Media
  * Foundation behaves differently when it can shortcut the Frame Server.
  */
+/**
+ * Hold the camera open the way a video call does, and watch both ends.
+ *
+ * A single frame proves the pipe connects and nothing more. Publishing a
+ * persistent device once passed that check and still delivered zero frames to
+ * a real consumer, because the failure only appears once something streams -
+ * so this measures sustained delivery *and* whether the app stayed responsive
+ * while it happened.
+ */
+function streamFromAnotherProcess(name, durationMs) {
+  const script = `
+    const addon = require(${JSON.stringify(ADDON)});
+    console.log(JSON.stringify(addon.streamForTest(${JSON.stringify(name)}, ${durationMs})));
+  `;
+  return spawn(process.execPath, ['-e', script], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+}
+
 function captureFromAnotherProcess(name, timeoutMs) {
   const script = `
     const addon = require(${JSON.stringify(ADDON)});
@@ -235,6 +254,63 @@ app.whenReady().then(async () => {
     shot.max > 32,
     `brightest luma ${shot.max}`,
   );
+
+  /* --------------------- sustained streaming --------------------- */
+
+  const STREAM_MS = 10000;
+  const streamer = streamFromAnotherProcess('Domino', STREAM_MS);
+  let streamOut = '';
+  streamer.stdout.on('data', (d) => {
+    streamOut += d;
+  });
+  /*
+   * Attached now, not after the sampling loop below. The consumer finishes
+   * while that loop is still running, so a listener added afterwards misses
+   * `close` entirely and waits for an event that has already happened.
+   */
+  const streamerClosed = new Promise((resolve) => streamer.on('close', resolve));
+
+  // While it streams, keep asking the renderer for something. If the app locks
+  // up - which is what a consumer must never be able to cause - these stop
+  // coming back.
+  let worstRoundTrip = 0;
+  let unanswered = 0;
+  const streamStart = Date.now();
+  while (Date.now() - streamStart < STREAM_MS + 2000) {
+    const t0 = Date.now();
+    const answered = await Promise.race([
+      // Caught, so a window that went away fails the check rather than
+      // rejecting into a hang.
+      win.webContents.executeJavaScript('1').then(() => true, () => false),
+      wait(4000).then(() => false),
+    ]);
+    const dt = Date.now() - t0;
+    if (!answered) unanswered++;
+    if (dt > worstRoundTrip) worstRoundTrip = dt;
+    await wait(300);
+  }
+  await streamerClosed;
+
+  let stream = {};
+  try {
+    stream = JSON.parse(streamOut.trim().split('\n').pop());
+  } catch {
+    stream = { ok: false, error: `unparseable: ${streamOut.slice(0, 200)}` };
+  }
+
+  info(
+    'stream',
+    `${stream.frames} frames in ${stream.elapsedMs}ms, longest gap ${stream.longestGapMs}ms`,
+  );
+  info('renderer round-trip while streaming', `worst ${worstRoundTrip}ms`);
+
+  check('a sustained consumer keeps receiving frames', (stream.frames ?? 0) > 60,
+    `${stream.frames} frames over ${STREAM_MS}ms`);
+  check('the stream does not stall', (stream.longestGapMs ?? 9999) < 1500,
+    `longest gap ${stream.longestGapMs}ms`);
+  check('the stream does not end early', stream.endOfStream !== true);
+  check('the app stays responsive while a consumer streams', unanswered === 0,
+    `${unanswered} unanswered probes, worst round-trip ${worstRoundTrip}ms`);
 
   await win.webContents.executeJavaScript('window.domino.virtualCamera.stop()');
   const after = await win.webContents.executeJavaScript(

@@ -45,6 +45,7 @@ class FrameChannel {
   uint32_t Height() const { return height_; }
 
  private:
+  HANDLE producerMutex_ = nullptr;
   HANDLE mapping_ = nullptr;
   HANDLE frameEvent_ = nullptr;
   uint8_t* view_ = nullptr;

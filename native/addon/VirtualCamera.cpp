@@ -134,12 +134,113 @@ bool IsSourceRegistered(std::wstring* registeredPath) {
   return false;
 }
 
-VirtualCamera::~VirtualCamera() { Stop(); }
+VirtualCamera::~VirtualCamera() {
+  if (thread_.joinable()) {
+    Dispatch(Command::Quit, L"", nullptr);
+    thread_.join();
+  }
+}
 
-void VirtualCamera::RemoveDevice() { Teardown(true); }
+/* ---------------------- the camera thread and its queue ------------------- */
 
-bool VirtualCamera::Start(const std::wstring& friendlyName, bool persistent,
+void VirtualCamera::EnsureThread() {
+  if (thread_.joinable()) return;
+  thread_ = std::thread([this] { ThreadMain(); });
+}
+
+bool VirtualCamera::Dispatch(Command command, const std::wstring& name,
+                             std::wstring* error) {
+  EnsureThread();
+
+  std::unique_lock<std::mutex> lock(mutex_);
+  pending_ = command;
+  pendingName_ = name;
+  pendingDone_ = false;
+  requested_.notify_one();
+  finished_.wait(lock, [this] { return pendingDone_; });
+
+  if (error) *error = pendingError_;
+  return pendingOk_;
+}
+
+void VirtualCamera::ThreadMain() {
+  /*
+   * The multithreaded apartment is the entire point of this thread. Objects
+   * created here are not tied to a message loop, so Windows never has to reach
+   * into the application's UI thread to drive the camera.
+   */
+  HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  const bool comReady = SUCCEEDED(hr);
+
+  for (;;) {
+    Command command;
+    std::wstring name;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      requested_.wait(lock, [this] { return pending_ != Command::None; });
+      command = pending_;
+      name = pendingName_;
+    }
+
+    bool ok = true;
+    std::wstring error;
+    if (!comReady) {
+      ok = false;
+      error = L"COM could not be initialised for the camera";
+    } else {
+      switch (command) {
+        case Command::Start:
+          ok = StartOnThread(name, false, &error);
+          break;
+        case Command::Stop:
+          TeardownOnThread(true);
+          break;
+        case Command::Remove: {
+          TeardownOnThread(true);
+          // Then clear an orphan published by an older build, which needs the
+          // same lifetime to get a handle to.
+          std::wstring ignored;
+          if (StartOnThread(name, true, &ignored)) TeardownOnThread(true);
+          break;
+        }
+        case Command::Quit:
+          TeardownOnThread(true);
+          break;
+        default:
+          break;
+      }
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      pending_ = Command::None;
+      pendingOk_ = ok;
+      pendingError_ = error;
+      pendingDone_ = true;
+    }
+    finished_.notify_all();
+
+    if (command == Command::Quit) break;
+  }
+
+  if (comReady) CoUninitialize();
+}
+
+/* ------------------------------ the camera -------------------------------- */
+
+bool VirtualCamera::Start(const std::wstring& friendlyName,
                           std::wstring* error) {
+  return Dispatch(Command::Start, friendlyName, error);
+}
+
+void VirtualCamera::Stop() { Dispatch(Command::Stop, L"", nullptr); }
+
+void VirtualCamera::RemoveDevice(const std::wstring& friendlyName) {
+  Dispatch(Command::Remove, friendlyName, nullptr);
+}
+
+bool VirtualCamera::StartOnThread(const std::wstring& friendlyName,
+                                  bool persistent, std::wstring* error) {
   if (camera_) return true;
 
   if (!mfStarted_) {
@@ -152,12 +253,11 @@ bool VirtualCamera::Start(const std::wstring& friendlyName, bool persistent,
   }
 
   /*
-   * System lifetime leaves the device registered when Domino is not running.
-   * That sounds worse than Session - a camera listed while nothing is
-   * producing frames - but it is what makes the feature usable: applications
-   * build their camera list once at startup, so a Session camera is invisible
-   * to any call that was already open, and the source emits clean black rather
-   * than a frozen frame when nobody is publishing.
+   * Session lifetime. See the note on Start() in the header: a System-lifetime
+   * device is listed even when Domino is closed, which sounds strictly better
+   * and measurably is not - consumers get zero frames from it whenever Domino
+   * is actually publishing. `persistent` is true only when reclaiming an
+   * orphan left by the build that shipped that behaviour.
    */
   HRESULT hr = MFCreateVirtualCamera(
       MFVirtualCameraType_SoftwareCameraSource,
@@ -183,8 +283,38 @@ bool VirtualCamera::Start(const std::wstring& friendlyName, bool persistent,
     return false;
   }
 
-  persistent_ = persistent;
+  /*
+   * Retry a service timeout.
+   *
+   * ERROR_SERVICE_REQUEST_TIMEOUT here means the Windows camera service is
+   * still tearing down a previous session - overwhelmingly after a Domino that
+   * was killed rather than closed. It clears within a second or two on its
+   * own, and the alternative is telling the user their camera does not work
+   * when trying again would have fixed it. Bounded tightly, because this runs
+   * while someone waits on a toggle.
+   */
   hr = camera_->Start(nullptr);
+  for (int attempt = 0; attempt < 3 &&
+                        hr == HRESULT_FROM_WIN32(ERROR_SERVICE_REQUEST_TIMEOUT);
+       attempt++) {
+    camera_->Remove();
+    camera_.Reset();
+    Sleep(900);
+
+    HRESULT again = MFCreateVirtualCamera(
+        MFVirtualCameraType_SoftwareCameraSource,
+        persistent ? MFVirtualCameraLifetime_System
+                   : MFVirtualCameraLifetime_Session,
+        MFVirtualCameraAccess_CurrentUser, friendlyName.c_str(),
+        kSourceClsidText, nullptr, 0, &camera_);
+    if (FAILED(again)) {
+      hr = again;
+      camera_.Reset();
+      break;
+    }
+    hr = camera_->Start(nullptr);
+  }
+
   if (FAILED(hr)) {
     if (error) {
       /*
@@ -202,38 +332,26 @@ bool VirtualCamera::Start(const std::wstring& friendlyName, bool persistent,
               : WithHr(L"The virtual camera was created but would not start",
                        hr);
     }
-    camera_->Remove();
-    camera_.Reset();
+    if (camera_) {
+      camera_->Remove();
+      camera_.Reset();
+    }
     return false;
   }
 
+  running_.store(true);
   return true;
 }
 
-void VirtualCamera::Stop() {
-  /*
-   * A persistent camera is deliberately left published. "Stop" means stop
-   * producing frames, not stop existing: the source falls back to black the
-   * moment the frame channel closes, and anything that already had Domino
-   * selected keeps working instead of losing its camera mid-call.
-   */
-  if (persistent_ && camera_) return;
-  Teardown(true);
-}
-
-void VirtualCamera::Teardown(bool removeDevice) {
+void VirtualCamera::TeardownOnThread(bool removeDevice) {
   if (camera_) {
     camera_->Stop();
-    /*
-     * Remove() unpublishes the device for good. A session-lifetime camera has
-     * to be removed or the entry lingers until the process dies; a persistent
-     * one is deliberately left in place so applications can keep it selected
-     * between runs.
-     */
+    // Remove() unpublishes the device. Without it the entry lingers until the
+    // process dies, leaving a camera that produces nothing.
     if (removeDevice) camera_->Remove();
     camera_.Reset();
   }
-  persistent_ = false;
+  running_.store(false);
   if (mfStarted_) {
     MFShutdown();
     mfStarted_ = false;

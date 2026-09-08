@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.4.1
+
+**Fixes the camera producing no output.** Two separate causes, both of which
+left the camera listed and silent.
+
+The first was mine, in 0.4.0. That release made the camera device persistent so
+it would stay in the list when Domino was closed, on the reasoning that call
+apps read the camera list once at startup. The device did stay in the list, and
+delivered *zero frames* to anything that opened it while Domino was actually
+publishing. It also outlived its creator, so a crash left a dead camera behind
+that nothing could remove. Reverted, and this release also clears an orphan
+left by 0.4.0 - use **Unregister camera driver**, or just turn the camera on
+once and off again.
+
+The second was older and worse. Domino refused to publish whenever the shared
+frame buffer already existed, on the assumption that meant a second copy of
+Domino was running. But every *consumer* holds that buffer open too, so once
+Discord or Zoom had opened the camera even briefly, Domino would report
+"another copy is already publishing" and produce nothing until a reboot.
+Whether another copy is publishing is now tracked with a lock that Windows
+releases automatically when its owner dies, so a crashed Domino no longer locks
+the camera out either.
+
+**Also**
+
+- The camera is now created and owned on a dedicated thread in the
+  multithreaded apartment. Publishing from the main thread let Windows drive
+  the camera through the application's UI thread, which is a freeze waiting to
+  happen the moment something streams from it.
+- A camera service that is still tearing down a previous session (a Domino that
+  was killed rather than closed) is retried rather than reported as a failure.
+- Sustained streaming is now a test. Everything here passed a
+  read-one-frame check and still failed in a real call, because the failures
+  only appear once something holds the camera open - so the suite now streams
+  for ten seconds and asserts that frames keep arriving and the app stays
+  responsive while they do.
+
 ## 0.4.0
 
 **The camera stays in the list.** Applications build their camera list once,

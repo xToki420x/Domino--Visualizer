@@ -52,6 +52,26 @@ bool FrameChannel::Open(uint32_t width, uint32_t height, uint32_t fpsNum,
   SECURITY_DESCRIPTOR sd{};
   SECURITY_ATTRIBUTES* attrs = PermissiveAttributes(&sa, &sd);
 
+  /*
+   * Claim the producer mutex before anything else. WAIT_ABANDONED means the
+   * previous owner died without releasing it, which is a perfectly good
+   * outcome - the camera is ours now.
+   */
+  producerMutex_ = CreateMutexW(attrs, FALSE, kProducerMutexName);
+  if (!producerMutex_) {
+    if (error) *error = L"Could not create the producer lock";
+    return false;
+  }
+  const DWORD claim = WaitForSingleObject(producerMutex_, 0);
+  if (claim != WAIT_OBJECT_0 && claim != WAIT_ABANDONED) {
+    if (error) {
+      *error =
+          L"Another copy of Domino is already publishing the virtual camera.";
+    }
+    Close();
+    return false;
+  }
+
   mapping_ = CreateFileMappingW(
       INVALID_HANDLE_VALUE, attrs, PAGE_READWRITE,
       static_cast<DWORD>(kTotalBytes >> 32),
@@ -66,18 +86,11 @@ bool FrameChannel::Open(uint32_t width, uint32_t height, uint32_t fpsNum,
     return false;
   }
 
-  // The name is machine-wide, so an existing mapping means another Domino is
-  // already publishing. Opening it anyway would have two processes writing the
-  // same slots, which shows up as a torn, flickering camera.
-  if (GetLastError() == ERROR_ALREADY_EXISTS) {
-    if (error) {
-      *error =
-          L"Another copy of Domino is already publishing the virtual camera.";
-    }
-    Close();
-    return false;
-  }
-
+  /*
+   * An existing mapping here is normal and not a conflict: consumers keep the
+   * mapping alive for as long as they have the camera open. Whether another
+   * *producer* is running was already settled by the mutex above.
+   */
   view_ = static_cast<uint8_t*>(
       MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, 0));
   if (!view_) {
@@ -134,6 +147,13 @@ void FrameChannel::Close() {
   if (frameEvent_) {
     CloseHandle(frameEvent_);
     frameEvent_ = nullptr;
+  }
+  if (producerMutex_) {
+    // Released explicitly so another Domino can publish immediately, rather
+    // than waiting for this process to exit.
+    ReleaseMutex(producerMutex_);
+    CloseHandle(producerMutex_);
+    producerMutex_ = nullptr;
   }
   width_ = height_ = 0;
 }

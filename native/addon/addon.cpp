@@ -152,7 +152,6 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
       info.Length() > 3 && info[3].IsString()
           ? Widen(info[3].As<Napi::String>().Utf8Value())
           : L"Domino";
-  const bool persistent = info.Length() > 4 ? info[4].ToBoolean().Value() : false;
 
   std::wstring error;
 
@@ -162,7 +161,7 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
     return Result(env, false, error);
   }
   g_channel.SetPublishing(true);
-  if (!g_camera.Start(name, persistent, &error)) {
+  if (!g_camera.Start(name, &error)) {
     g_channel.Close();
     return Result(env, false, error);
   }
@@ -177,13 +176,16 @@ Napi::Value Stop(const Napi::CallbackInfo& info) {
    */
   g_channel.SetPublishing(false);
   g_camera.Stop();
-  if (!g_camera.IsRunning()) g_channel.Close();
+  g_channel.Close();
   return Result(info.Env(), true);
 }
 
-/** Take the device out of the camera list entirely. */
+/** Take the device out of the camera list, orphans from older builds included. */
 Napi::Value RemoveCamera(const Napi::CallbackInfo& info) {
-  g_camera.RemoveDevice();
+  const std::wstring name = info.Length() > 0 && info[0].IsString()
+                                ? Widen(info[0].As<Napi::String>().Utf8Value())
+                                : L"Domino Visualizer";
+  g_camera.RemoveDevice(name);
   g_channel.Close();
   return Result(info.Env(), true);
 }
@@ -349,6 +351,33 @@ Napi::Value CaptureFromDllForTest(const Napi::CallbackInfo& info) {
   return obj;
 }
 
+/** Hold the camera open for a while and report how the stream behaved. */
+Napi::Value StreamForTest(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  const std::wstring name = info.Length() > 0 && info[0].IsString()
+                                ? Widen(info[0].As<Napi::String>().Utf8Value())
+                                : L"Domino";
+  const uint32_t durationMs = info.Length() > 1 && info[1].IsNumber()
+                                  ? info[1].As<Napi::Number>().Uint32Value()
+                                  : 10000;
+
+  domino::StreamStats stats;
+  std::wstring error;
+  const bool ok = domino::StreamFromCamera(name, durationMs, &stats, &error);
+
+  Napi::Object obj = Napi::Object::New(env);
+  obj.Set("ok", Napi::Boolean::New(env, ok));
+  if (!ok) obj.Set("error", Napi::String::New(env, Narrow(error)));
+  obj.Set("frames", Napi::Number::New(env, stats.frames));
+  obj.Set("emptyReads", Napi::Number::New(env, stats.emptyReads));
+  obj.Set("width", Napi::Number::New(env, stats.width));
+  obj.Set("height", Napi::Number::New(env, stats.height));
+  obj.Set("longestGapMs", Napi::Number::New(env, stats.longestGapMs));
+  obj.Set("elapsedMs", Napi::Number::New(env, stats.elapsedMs));
+  obj.Set("endOfStream", Napi::Boolean::New(env, stats.endOfStream));
+  return obj;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("registerSource", Napi::Function::New(env, RegisterSource));
   exports.Set("unregisterSource", Napi::Function::New(env, UnregisterSource));
@@ -370,6 +399,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("mediaFoundationAvailable",
               Napi::Function::New(env, MediaFoundationAvailable));
   exports.Set("probeSourceClass", Napi::Function::New(env, ProbeSourceClass));
+  exports.Set("streamForTest", Napi::Function::New(env, StreamForTest));
   exports.Set("captureFromDllForTest",
               Napi::Function::New(env, CaptureFromDllForTest));
   exports.Set("captureFrameForTest",

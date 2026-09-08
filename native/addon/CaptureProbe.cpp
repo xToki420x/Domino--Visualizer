@@ -273,6 +273,105 @@ bool ReadFirstSample(IMFMediaSource* source, uint32_t timeoutMs,
 
 namespace {
 
+/** Open the first camera matching `nameContains`. Caller shuts it down. */
+bool OpenNamedCamera(const std::wstring& nameContains, IMFMediaSource** source,
+                     std::wstring* chosenName, std::wstring* error) {
+  ComPtr<IMFAttributes> attributes;
+  if (FAILED(CreateVideoDeviceEnumerator(&attributes))) {
+    if (error) *error = L"Could not build the device enumerator";
+    return false;
+  }
+
+  IMFActivate** devices = nullptr;
+  UINT32 count = 0;
+  if (FAILED(MFEnumDeviceSources(attributes.Get(), &devices, &count))) {
+    if (error) *error = L"MFEnumDeviceSources failed";
+    return false;
+  }
+
+  bool opened = false;
+  for (UINT32 i = 0; i < count; i++) {
+    std::wstring name;
+    if (!opened && FriendlyName(devices[i], &name) &&
+        Contains(name, nameContains)) {
+      if (SUCCEEDED(devices[i]->ActivateObject(IID_PPV_ARGS(source)))) {
+        if (chosenName) *chosenName = name;
+        opened = true;
+      }
+    }
+    devices[i]->Release();
+  }
+  CoTaskMemFree(devices);
+
+  if (!opened && error) *error = L"No matching camera could be opened";
+  return opened;
+}
+
+bool StreamFromCameraInMta(const std::wstring& nameContains, uint32_t durationMs,
+                           StreamStats* stats, std::wstring* error) {
+  MFSession session;
+  if (FAILED(session.Start())) {
+    if (error) *error = L"MFStartup failed";
+    return false;
+  }
+
+  ComPtr<IMFMediaSource> source;
+  if (!OpenNamedCamera(nameContains, source.GetAddressOf(), nullptr, error)) {
+    return false;
+  }
+
+  ComPtr<IMFSourceReader> reader;
+  if (FAILED(MFCreateSourceReaderFromMediaSource(source.Get(), nullptr,
+                                                 &reader))) {
+    source->Shutdown();
+    if (error) *error = L"Could not create a source reader";
+    return false;
+  }
+  reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE);
+  reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+
+  ComPtr<IMFMediaType> type;
+  if (SUCCEEDED(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                            &type))) {
+    MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &stats->width,
+                       &stats->height);
+  }
+
+  const ULONGLONG start = GetTickCount64();
+  const ULONGLONG deadline = start + durationMs;
+  ULONGLONG lastFrame = start;
+
+  while (GetTickCount64() < deadline) {
+    DWORD flags = 0;
+    LONGLONG timestamp = 0;
+    ComPtr<IMFSample> sample;
+    HRESULT hr = reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
+                                    nullptr, &flags, &timestamp, &sample);
+    if (FAILED(hr)) {
+      if (error) *error = L"ReadSample failed part-way through the stream";
+      break;
+    }
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+      stats->endOfStream = true;
+      break;
+    }
+    if (!sample) {
+      stats->emptyReads++;
+      continue;
+    }
+
+    const ULONGLONG now = GetTickCount64();
+    const uint32_t gap = static_cast<uint32_t>(now - lastFrame);
+    if (gap > stats->longestGapMs) stats->longestGapMs = gap;
+    lastFrame = now;
+    stats->frames++;
+  }
+
+  stats->elapsedMs = static_cast<uint32_t>(GetTickCount64() - start);
+  source->Shutdown();
+  return true;
+}
+
 bool CaptureOneFrameInMta(const std::wstring& nameContains, uint32_t timeoutMs,
                           CapturedFrame* out, std::wstring* error) {
   MFSession session;
@@ -328,6 +427,13 @@ bool CaptureOneFrameInMta(const std::wstring& nameContains, uint32_t timeoutMs,
 }
 
 }  // namespace
+
+bool StreamFromCamera(const std::wstring& nameContains, uint32_t durationMs,
+                      StreamStats* stats, std::wstring* error) {
+  if (!stats) return false;
+  return RunInMta(
+      [&] { return StreamFromCameraInMta(nameContains, durationMs, stats, error); });
+}
 
 bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
                      CapturedFrame* out, std::wstring* error) {

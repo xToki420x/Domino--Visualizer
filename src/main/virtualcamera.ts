@@ -93,10 +93,9 @@ interface NativeAddon {
     height: number,
     fps: number,
     name: string,
-    persistent: boolean,
   ): NativeResult;
   stop(): NativeResult;
-  removeCamera(): NativeResult;
+  removeCamera(name: string): NativeResult;
   isRunning(): boolean;
   writeFrame(frame: Buffer): NativeResult;
   listCameras(): string[];
@@ -225,15 +224,14 @@ export function start(
   fps = Math.max(1, Math.min(60, Math.round(requestedFps)));
 
   /*
-   * Published persistently, on purpose.
+   * The device lives only while Domino does.
    *
-   * Applications build their camera list once, when they start. A camera that
-   * exists only while Domino happens to be running is therefore invisible to a
-   * call that was already open - which is the most common way this feature
-   * looks broken. Left registered, Domino can be selected at any time and
-   * simply shows black until it has something to send.
+   * A persistent one was tried, so that Domino could be selected in a call
+   * that was already open, and it does not work: with a persistent device
+   * published and Domino producing, consumers get zero frames. See the note on
+   * VirtualCamera::Start.
    */
-  const result = native.start(width, height, fps, name || 'Domino', true);
+  const result = native.start(width, height, fps, name || 'Domino');
   running = result.ok;
   framesWritten = 0;
   if (!result.ok) lastError = result.error ?? 'The virtual camera would not start.';
@@ -284,10 +282,13 @@ export function register(unregister = false): VirtualCameraStatus {
     return getStatus();
   }
 
-  // Unregistering leaves no camera behind: the device outlives the app by
-  // design, so it has to be taken out of the list explicitly.
+  /*
+   * Unregistering clears the device too, including an orphan left behind by
+   * v0.4.0 - which published a persistent camera that outlived the app and
+   * then served black frames to anything that selected it.
+   */
   if (unregister) {
-    native.removeCamera();
+    native.removeCamera('Domino Visualizer');
     running = false;
   }
 

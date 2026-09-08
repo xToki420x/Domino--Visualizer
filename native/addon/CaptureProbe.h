@@ -56,6 +56,26 @@ struct CapturedFrame {
 bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
                      CapturedFrame* out, std::wstring* error);
 
+struct StreamStats {
+  uint32_t frames = 0;
+  uint32_t emptyReads = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t longestGapMs = 0;
+  uint32_t elapsedMs = 0;
+  bool endOfStream = false;
+};
+
+/**
+ * Hold the camera open and pull frames for a while, the way a call does.
+ *
+ * Reading a single frame proves the pipe connects; it says nothing about what
+ * happens over minutes of streaming, which is where a leak, a stall or a
+ * deadlock between producer and consumer would actually show up.
+ */
+bool StreamFromCamera(const std::wstring& nameContains, uint32_t durationMs,
+                      StreamStats* stats, std::wstring* error);
+
 struct InterfaceProbe {
   std::wstring name;
   int32_t hr;

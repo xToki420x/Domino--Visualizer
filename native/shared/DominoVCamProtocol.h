@@ -31,6 +31,21 @@ namespace domino {
 inline constexpr wchar_t kSharedMemoryName[] = L"Global\\DominoVCamFrames_v1";
 inline constexpr wchar_t kFrameEventName[] = L"Global\\DominoVCamFrameReady_v1";
 
+/*
+ * Held by whichever Domino is currently publishing.
+ *
+ * "Is another copy already publishing?" cannot be answered by asking whether
+ * the shared mapping exists: every *consumer* holds a handle to it too, so
+ * once any application had opened the camera, the next Domino to start would
+ * conclude another copy of itself was running and refuse to publish.
+ *
+ * A mutex answers the question properly, and Windows abandons it when its
+ * owner dies - so a Domino that crashed does not lock the camera out until the
+ * machine is rebooted.
+ */
+inline constexpr wchar_t kProducerMutexName[] =
+    L"Global\\DominoVCamProducer_v1";
+
 inline constexpr uint32_t kMagic = 0x4F4E4D44;  // 'DMNO' little-endian
 inline constexpr uint32_t kVersion = 2;
 
