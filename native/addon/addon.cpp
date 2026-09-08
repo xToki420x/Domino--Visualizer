@@ -189,6 +189,11 @@ Napi::Value WriteFrame(const Napi::CallbackInfo& info) {
                 error);
 }
 
+/** False on a Windows install without the Media Foundation feature. */
+Napi::Value MediaFoundationAvailable(const Napi::CallbackInfo& info) {
+  return Napi::Boolean::New(info.Env(), domino::MediaFoundationAvailable());
+}
+
 /** Every video capture device Windows can see, us included. */
 Napi::Value ListCameras(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -321,6 +326,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("isRunning", Napi::Function::New(env, IsRunning));
   exports.Set("writeFrame", Napi::Function::New(env, WriteFrame));
   exports.Set("listCameras", Napi::Function::New(env, ListCameras));
+  exports.Set("mediaFoundationAvailable",
+              Napi::Function::New(env, MediaFoundationAvailable));
   exports.Set("probeSourceClass", Napi::Function::New(env, ProbeSourceClass));
   exports.Set("captureFromDllForTest",
               Napi::Function::New(env, CaptureFromDllForTest));

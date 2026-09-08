@@ -31,7 +31,8 @@ try {
 check('module exposes its API',
   ['registerSource','registerSourceElevated','unregisterSource','isRegistered',
    'openChannel','closeChannel','start','stop','isRunning','writeFrame',
-   'listCameras','probeSourceClass','captureFromDllForTest']
+   'listCameras','mediaFoundationAvailable','probeSourceClass',
+   'captureFromDllForTest']
     .every((k) => typeof vcam[k] === 'function'));
 
 check('nothing is running on a cold start', vcam.isRunning() === false);
@@ -89,6 +90,19 @@ check('registration state is reported', typeof reg.registered === 'boolean');
 
 const missing = vcam.registerSource('E:\\nowhere\\domino_vcam_source.dll');
 check('registering a missing DLL is refused', missing.ok === false, missing.error);
+
+/*
+ * Everything below needs Media Foundation. Windows Server - and therefore most
+ * CI runners - ships without it, which makes the camera unavailable through no
+ * fault of the build. The transport tests above are pure Win32 and always run.
+ */
+const HAS_MF = vcam.mediaFoundationAvailable();
+if (!HAS_MF) {
+  console.log('\nMedia Foundation is not installed on this machine.');
+  console.log('Skipping the media source tests; the transport tests above still ran.');
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed > 0 ? 1 : 0);
+}
 
 check('camera enumeration returns a list', Array.isArray(vcam.listCameras()));
 

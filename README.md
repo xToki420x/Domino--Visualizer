@@ -2,10 +2,13 @@
 
 A desktop music visualizer that listens to **everything your computer plays**, runs
 **Shadertoy-compatible shaders** you can edit live, and includes a **from-scratch
-MilkDrop engine** that loads, renders, tweaks and re-saves `.milk` presets.
+MilkDrop engine** that loads, renders, tweaks and re-saves `.milk` presets. It can
+also take your **webcam as a shader input** and publish itself back out **as a
+webcam**, so the visuals go straight into Zoom, Discord or Meet.
 
 Built with Electron + TypeScript + WebGL2. No third-party visualizer libraries —
-the MilkDrop equation compiler, warp engine and HLSL translator are all original.
+the MilkDrop equation compiler, warp engine, HLSL translator and Media Foundation
+camera driver are all original.
 
 ## Download
 
@@ -38,7 +41,7 @@ npm run gen:icon    # regenerate build/icon.ico
 Cutting a release: `npm version patch && git push --follow-tags`. The GitHub
 Actions workflow builds both artefacts, runs the full test suite, verifies the
 *packaged* binary boots and finds its preset library, and attaches the files to
-a draft Release.
+a published Release.
 
 ---
 

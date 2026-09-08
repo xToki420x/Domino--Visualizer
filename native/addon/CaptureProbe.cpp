@@ -132,6 +132,15 @@ bool EnumerateCamerasInMta(std::vector<std::wstring>* names, std::wstring* error
 
 }  // namespace
 
+bool MediaFoundationAvailable() {
+  // LoadLibrary rather than MFStartup: on a machine without the feature the
+  // DLL is absent, and asking for it directly is both cheaper and unambiguous.
+  HMODULE mfplat = LoadLibraryW(L"mfplat.dll");
+  if (!mfplat) return false;
+  FreeLibrary(mfplat);
+  return true;
+}
+
 bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error) {
   if (!names) return false;
   names->clear();

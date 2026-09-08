@@ -148,6 +148,8 @@ export interface VirtualCameraStatus {
   registeredIsThisBuild: boolean;
   /** The DLL a user would hand to regsvr32; empty when this build has none. */
   sourcePath: string;
+  /** The native module on disk; empty when it was not packaged. */
+  modulePath: string;
   error: string;
 }
 

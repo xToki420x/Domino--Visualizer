@@ -34,6 +34,8 @@ export interface VirtualCameraStatus {
   registeredIsThisBuild: boolean;
   /** Path a user would hand to regsvr32; empty when the DLL is missing. */
   sourcePath: string;
+  /** The native module on disk; empty when it was not packaged. */
+  modulePath: string;
   error: string;
 }
 
@@ -134,6 +136,17 @@ export function sourceDllPath(): string {
   return findNative('domino_vcam_source.dll');
 }
 
+/**
+ * The native module file, whether or not it can be loaded here.
+ *
+ * Separate from `available` on purpose: a missing file is a packaging defect,
+ * while a file that will not load may simply be a Windows install without the
+ * Media Foundation feature.
+ */
+export function modulePath(): string {
+  return findNative('domino_vcam.node');
+}
+
 function load(): NativeAddon | null {
   if (loadAttempted) return addon;
   loadAttempted = true;
@@ -175,6 +188,7 @@ export function getStatus(): VirtualCameraStatus {
     framesWritten,
     registeredPath: registration.path,
     sourcePath: dll,
+    modulePath: modulePath(),
     error: lastError || loadError,
   };
 }

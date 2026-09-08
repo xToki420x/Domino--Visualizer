@@ -81,8 +81,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          # Published, not a draft. A draft is invisible to everyone but the
+          # repository owner, so a tagged build that nobody can download is
+          # indistinguishable from no release at all.
+          draft: false
           generate_release_notes: true
+          body: |
+            **Windows.** Run `Domino-Setup-*.exe` to install, or take the
+            portable build and run it from anywhere.
+
+            Publishing Domino as a webcam needs a one-time driver
+            registration: open **Display → Virtual Camera → Register camera
+            driver** and approve the Windows prompt. It is asked for once and
+            never again, and there is an Unregister button beside it.
           files: |
             release/Domino-Setup-*.exe
             release/Domino-*-portable.exe

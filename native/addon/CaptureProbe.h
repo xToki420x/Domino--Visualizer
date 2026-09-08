@@ -15,6 +15,16 @@
 
 namespace domino {
 
+/**
+ * Can Media Foundation start on this machine at all?
+ *
+ * Windows Server, and therefore most CI runners, ships without the Media
+ * Foundation feature. Everything camera-related is then unavailable through no
+ * fault of the build, and a test suite has to tell that apart from a genuine
+ * regression instead of reporting a red build either way.
+ */
+bool MediaFoundationAvailable();
+
 /** Friendly names of every video capture device Media Foundation can see. */
 bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error);
 
