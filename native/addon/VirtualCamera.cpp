@@ -136,7 +136,9 @@ bool IsSourceRegistered(std::wstring* registeredPath) {
 
 VirtualCamera::~VirtualCamera() { Stop(); }
 
-bool VirtualCamera::Start(const std::wstring& friendlyName,
+void VirtualCamera::RemoveDevice() { Teardown(true); }
+
+bool VirtualCamera::Start(const std::wstring& friendlyName, bool persistent,
                           std::wstring* error) {
   if (camera_) return true;
 
@@ -150,13 +152,17 @@ bool VirtualCamera::Start(const std::wstring& friendlyName,
   }
 
   /*
-   * Lifetime is Session, not System: the camera disappears when Domino exits.
-   * A virtual camera that outlives the app producing its frames is a device
-   * that shows a frozen or black image, which is worse than not being listed.
+   * System lifetime leaves the device registered when Domino is not running.
+   * That sounds worse than Session - a camera listed while nothing is
+   * producing frames - but it is what makes the feature usable: applications
+   * build their camera list once at startup, so a Session camera is invisible
+   * to any call that was already open, and the source emits clean black rather
+   * than a frozen frame when nobody is publishing.
    */
   HRESULT hr = MFCreateVirtualCamera(
       MFVirtualCameraType_SoftwareCameraSource,
-      MFVirtualCameraLifetime_Session,
+      persistent ? MFVirtualCameraLifetime_System
+                 : MFVirtualCameraLifetime_Session,
       MFVirtualCameraAccess_CurrentUser,
       friendlyName.c_str(),
       kSourceClsidText,
@@ -177,6 +183,7 @@ bool VirtualCamera::Start(const std::wstring& friendlyName,
     return false;
   }
 
+  persistent_ = persistent;
   hr = camera_->Start(nullptr);
   if (FAILED(hr)) {
     if (error) {
@@ -204,13 +211,29 @@ bool VirtualCamera::Start(const std::wstring& friendlyName,
 }
 
 void VirtualCamera::Stop() {
+  /*
+   * A persistent camera is deliberately left published. "Stop" means stop
+   * producing frames, not stop existing: the source falls back to black the
+   * moment the frame channel closes, and anything that already had Domino
+   * selected keeps working instead of losing its camera mid-call.
+   */
+  if (persistent_ && camera_) return;
+  Teardown(true);
+}
+
+void VirtualCamera::Teardown(bool removeDevice) {
   if (camera_) {
     camera_->Stop();
-    // Remove() unpublishes the device. Without it the entry can linger until
-    // the process dies, leaving a camera that produces nothing.
-    camera_->Remove();
+    /*
+     * Remove() unpublishes the device for good. A session-lifetime camera has
+     * to be removed or the entry lingers until the process dies; a persistent
+     * one is deliberately left in place so applications can keep it selected
+     * between runs.
+     */
+    if (removeDevice) camera_->Remove();
     camera_.Reset();
   }
+  persistent_ = false;
   if (mfStarted_) {
     MFShutdown();
     mfStarted_ = false;

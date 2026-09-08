@@ -17,17 +17,46 @@ class VirtualCamera {
   VirtualCamera(const VirtualCamera&) = delete;
   VirtualCamera& operator=(const VirtualCamera&) = delete;
 
-  /** Publish the camera. `friendlyName` is what appears in Zoom's device list. */
-  bool Start(const std::wstring& friendlyName, std::wstring* error);
+  /**
+   * Publish the camera. `friendlyName` is what appears in Zoom's device list.
+   *
+   * `persistent` keeps the device registered when Domino is not running, the
+   * way every other virtual camera on a typical machine behaves. It matters
+   * because applications enumerate cameras once, at startup: a camera that
+   * only exists while Domino happens to be open is invisible to a call that
+   * was already running, which is the single most common way this feature
+   * looks broken.
+   */
+  bool Start(const std::wstring& friendlyName, bool persistent,
+             std::wstring* error);
 
-  /** Remove it. Safe to call when not started. */
+  /**
+   * Stop producing frames.
+   *
+   * A persistent camera stays in the device list afterwards, showing black -
+   * that is the whole point of it, and deleting the device here would put us
+   * back to being invisible to any call that was already open.
+   */
   void Stop();
 
+  /**
+   * Unpublish the device outright.
+   *
+   * Separate from Stop() because it is not reversible from another
+   * application's point of view: anything that had Domino selected loses the
+   * device. Used when the driver is unregistered.
+   */
+  void RemoveDevice();
+
+  /** True while the device is published, whether or not frames are flowing. */
   bool IsRunning() const { return camera_ != nullptr; }
 
  private:
+  void Teardown(bool removeDevice);
+
   Microsoft::WRL::ComPtr<IMFVirtualCamera> camera_;
   bool mfStarted_ = false;
+  bool persistent_ = false;
 };
 
 /**

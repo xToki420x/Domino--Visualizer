@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0
+
+**The camera stays in the list.** Applications build their camera list once,
+when they start, so a camera that only existed while Domino happened to be
+running was invisible to any call that was already open — the most common way
+this feature looked broken. Domino now registers the device persistently, the
+way every other virtual camera does. Pick it in Zoom whenever you like; it
+shows clean black until you switch publishing on, and **Unregister camera
+driver** takes it out of the list for good.
+
+Switching *Publish as Webcam* off now pauses rather than tears down, so nothing
+loses its camera mid-call. The frame channel deliberately stays open across a
+pause, because closing it would change the frame size a newly opened consumer
+negotiates.
+
+**A splash screen.** Domino takes a couple of seconds to scan its preset
+library, compile shaders and bring up a GL context, and showing nothing during
+that reads as an app that failed to launch. The splash paints in the first
+frames of the process, reports what is actually happening, and hands over the
+moment the first frame is on screen. It is a shader, naturally.
+
+**Also**
+
+- A stale registration pointing at an older install is detected and reported
+  instead of quietly producing a black camera — compared by content, so the
+  same build at two paths is not a false alarm.
+- Diagnostics for both camera enumeration paths, Media Foundation and
+  DirectShow, since apps differ in which one they use.
+
 ## 0.3.0
 
 **Domino can be a webcam.** Turn on **Publish as Webcam** in *Display → Virtual

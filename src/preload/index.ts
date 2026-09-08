@@ -80,6 +80,17 @@ const api: DominoApi = {
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
   },
 
+  splash: {
+    // `send`, not `invoke`: startup should never wait on the splash, and there
+    // is nothing to hear back.
+    stage: (stage: string, fraction?: number): void => {
+      ipcRenderer.send('splash:stage', stage, fraction);
+    },
+    ready: (): void => {
+      ipcRenderer.send('app:ready');
+    },
+  },
+
   onCommand(cb) {
     const listener = (_e: unknown, command: string, payload?: unknown): void => cb(command, payload);
     ipcRenderer.on('app:command', listener);

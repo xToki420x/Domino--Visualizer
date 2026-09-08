@@ -149,10 +149,13 @@ class Domino {
   }
 
   async start(): Promise<void> {
+    const stage = window.domino.splash.stage;
+    stage('reading settings', 0.15);
     this.settings = await window.domino.settings.get();
     this.display = new DisplayPanel(el('display-body'), this.settings);
     this.applySettingsToUi();
 
+    stage('building the interface', 0.3);
     this.wireLibrary();
     this.wireInspector();
     this.wireTransport();
@@ -160,9 +163,12 @@ class Domino {
     this.wireStage();
     this.wireHotkeys();
 
+    stage('scanning the preset library', 0.5);
     await this.refreshLibrary('milk');
     await this.refreshLibrary('shader');
     await this.switchLibrary('milk');
+
+    stage('compiling shaders', 0.75);
 
     // Restore whatever was on screen last session, or fall back to something.
     const last = this.settings.lastVisual;
@@ -192,7 +198,16 @@ class Domino {
     // Restore the camera if it was on last session.
     if (this.settings.cameraEnabled) void this.syncCamera();
 
+    stage('ready', 0.95);
     requestAnimationFrame(this.frame);
+
+    /*
+     * Tell the main process only once something has actually been drawn. The
+     * splash is there to cover the gap before the first frame, so handing over
+     * any earlier would show an empty window for exactly the period it exists
+     * to hide.
+     */
+    requestAnimationFrame(() => requestAnimationFrame(() => window.domino.splash.ready()));
   }
 
   /* ------------------------------ library ------------------------------ */

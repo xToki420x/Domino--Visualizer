@@ -28,6 +28,18 @@ bool MediaFoundationAvailable();
 /** Friendly names of every video capture device Media Foundation can see. */
 bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error);
 
+/**
+ * The same question asked through DirectShow instead.
+ *
+ * Plenty of conferencing and streaming applications still enumerate cameras
+ * the old way. Windows bridges Media Foundation virtual cameras into DirectShow
+ * automatically, but "automatically" is worth verifying: a camera that appears
+ * in one list and not the other looks, to the user, like an app that refuses to
+ * see it for no reason.
+ */
+bool EnumerateDirectShowCameras(std::vector<std::wstring>* names,
+                                std::wstring* error);
+
 struct CapturedFrame {
   uint32_t width = 0;
   uint32_t height = 0;

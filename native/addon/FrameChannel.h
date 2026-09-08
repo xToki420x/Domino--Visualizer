@@ -32,6 +32,15 @@ class FrameChannel {
    */
   bool WriteFrame(const uint8_t* data, size_t bytes, std::wstring* error);
 
+  /**
+   * Mark the channel live or paused without closing it.
+   *
+   * Closing would change the frame size a freshly created media source picks
+   * up, so a pause has to be something the reader can see rather than the
+   * absence of the channel itself.
+   */
+  void SetPublishing(bool publishing);
+
   uint32_t Width() const { return width_; }
   uint32_t Height() const { return height_; }
 

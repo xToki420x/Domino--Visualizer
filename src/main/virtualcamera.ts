@@ -88,8 +88,15 @@ interface NativeAddon {
   registerSourceElevated(dllPath: string, unregister: boolean): NativeResult;
   unregisterSource(): NativeResult;
   isRegistered(): { registered: boolean; path: string };
-  start(width: number, height: number, fps: number, name: string): NativeResult;
+  start(
+    width: number,
+    height: number,
+    fps: number,
+    name: string,
+    persistent: boolean,
+  ): NativeResult;
   stop(): NativeResult;
+  removeCamera(): NativeResult;
   isRunning(): boolean;
   writeFrame(frame: Buffer): NativeResult;
   listCameras(): string[];
@@ -217,7 +224,16 @@ export function start(
   height = Math.max(2, Math.floor(requestedHeight / 2) * 2);
   fps = Math.max(1, Math.min(60, Math.round(requestedFps)));
 
-  const result = native.start(width, height, fps, name || 'Domino');
+  /*
+   * Published persistently, on purpose.
+   *
+   * Applications build their camera list once, when they start. A camera that
+   * exists only while Domino happens to be running is therefore invisible to a
+   * call that was already open - which is the most common way this feature
+   * looks broken. Left registered, Domino can be selected at any time and
+   * simply shows black until it has something to send.
+   */
+  const result = native.start(width, height, fps, name || 'Domino', true);
   running = result.ok;
   framesWritten = 0;
   if (!result.ok) lastError = result.error ?? 'The virtual camera would not start.';
@@ -266,6 +282,13 @@ export function register(unregister = false): VirtualCameraStatus {
   if (!dll) {
     lastError = 'The camera driver was not included in this copy of Domino.';
     return getStatus();
+  }
+
+  // Unregistering leaves no camera behind: the device outlives the app by
+  // design, so it has to be taken out of the list explicitly.
+  if (unregister) {
+    native.removeCamera();
+    running = false;
   }
 
   const result = native.registerSourceElevated(dll, unregister);

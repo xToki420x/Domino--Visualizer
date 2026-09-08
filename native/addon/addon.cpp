@@ -101,6 +101,13 @@ Napi::Value OpenChannel(const Napi::CallbackInfo& info) {
   return Result(env, g_channel.Open(width, height, fps, 1, &error), error);
 }
 
+/** Pause or resume publishing without closing the channel. */
+Napi::Value SetPublishing(const Napi::CallbackInfo& info) {
+  const bool publishing = info.Length() > 0 ? info[0].ToBoolean().Value() : true;
+  g_channel.SetPublishing(publishing);
+  return Result(info.Env(), true);
+}
+
 Napi::Value CloseChannel(const Napi::CallbackInfo& info) {
   g_channel.Close();
   return Result(info.Env(), true);
@@ -145,6 +152,7 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
       info.Length() > 3 && info[3].IsString()
           ? Widen(info[3].As<Napi::String>().Utf8Value())
           : L"Domino";
+  const bool persistent = info.Length() > 4 ? info[4].ToBoolean().Value() : false;
 
   std::wstring error;
 
@@ -153,7 +161,8 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
   if (!g_channel.Open(width, height, fps, 1, &error)) {
     return Result(env, false, error);
   }
-  if (!g_camera.Start(name, &error)) {
+  g_channel.SetPublishing(true);
+  if (!g_camera.Start(name, persistent, &error)) {
     g_channel.Close();
     return Result(env, false, error);
   }
@@ -161,7 +170,20 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Stop(const Napi::CallbackInfo& info) {
+  /*
+   * Pause rather than tear down. The device stays in everyone's camera list
+   * and the channel stays open at the size already negotiated; the source sees
+   * the cleared flag and switches to black.
+   */
+  g_channel.SetPublishing(false);
   g_camera.Stop();
+  if (!g_camera.IsRunning()) g_channel.Close();
+  return Result(info.Env(), true);
+}
+
+/** Take the device out of the camera list entirely. */
+Napi::Value RemoveCamera(const Napi::CallbackInfo& info) {
+  g_camera.RemoveDevice();
   g_channel.Close();
   return Result(info.Env(), true);
 }
@@ -192,6 +214,21 @@ Napi::Value WriteFrame(const Napi::CallbackInfo& info) {
 /** False on a Windows install without the Media Foundation feature. */
 Napi::Value MediaFoundationAvailable(const Napi::CallbackInfo& info) {
   return Napi::Boolean::New(info.Env(), domino::MediaFoundationAvailable());
+}
+
+/** The camera list as an application using DirectShow would see it. */
+Napi::Value ListDirectShowCameras(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  std::vector<std::wstring> names;
+  std::wstring error;
+  if (!domino::EnumerateDirectShowCameras(&names, &error)) {
+    return Napi::Array::New(env, 0);
+  }
+  Napi::Array out = Napi::Array::New(env, names.size());
+  for (size_t i = 0; i < names.size(); i++) {
+    out.Set(static_cast<uint32_t>(i), Napi::String::New(env, Narrow(names[i])));
+  }
+  return out;
 }
 
 /** Every video capture device Windows can see, us included. */
@@ -320,12 +357,16 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("isRegistered", Napi::Function::New(env, IsRegistered));
   exports.Set("openChannel", Napi::Function::New(env, OpenChannel));
   exports.Set("closeChannel", Napi::Function::New(env, CloseChannel));
+  exports.Set("setPublishing", Napi::Function::New(env, SetPublishing));
   exports.Set("readBackForTest", Napi::Function::New(env, ReadBackForTest));
   exports.Set("start", Napi::Function::New(env, Start));
   exports.Set("stop", Napi::Function::New(env, Stop));
+  exports.Set("removeCamera", Napi::Function::New(env, RemoveCamera));
   exports.Set("isRunning", Napi::Function::New(env, IsRunning));
   exports.Set("writeFrame", Napi::Function::New(env, WriteFrame));
   exports.Set("listCameras", Napi::Function::New(env, ListCameras));
+  exports.Set("listDirectShowCameras",
+              Napi::Function::New(env, ListDirectShowCameras));
   exports.Set("mediaFoundationAvailable",
               Napi::Function::New(env, MediaFoundationAvailable));
   exports.Set("probeSourceClass", Napi::Function::New(env, ProbeSourceClass));

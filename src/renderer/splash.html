@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Domino</title>
+    <!--
+      Deliberately self-contained: no imports, no shared bundle, no fonts to
+      fetch. This window has to paint in the first few frames of the process,
+      before anything heavy has loaded, or there is no point having it at all.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      #card {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #05060a;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        box-shadow:
+          0 24px 70px rgba(0, 0, 0, 0.65),
+          0 0 0 1px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transform: scale(0.985);
+        transition:
+          opacity 260ms ease,
+          transform 260ms ease;
+      }
+      #card.in {
+        opacity: 1;
+        transform: scale(1);
+      }
+      #card.out {
+        opacity: 0;
+        transform: scale(1.02);
+        transition:
+          opacity 240ms ease,
+          transform 240ms ease;
+      }
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      /* Everything above the canvas sits in here so the shader stays behind. */
+      #ui {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      #word {
+        font-size: 60px;
+        font-weight: 800;
+        letter-spacing: 0.28em;
+        /* The tracking pushes the block right; pull it back so it reads centred. */
+        text-indent: 0.28em;
+        color: #fff;
+        line-height: 1;
+        text-shadow:
+          0 0 18px rgba(255, 60, 90, 0.55),
+          0 0 60px rgba(190, 60, 255, 0.35);
+      }
+      #tag {
+        margin-top: 14px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.46em;
+        text-indent: 0.46em;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #barwrap {
+        margin-top: 30px;
+        width: 232px;
+        height: 2px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      #bar {
+        height: 100%;
+        width: 0%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #ff2d55, #b14cff 60%, #4cc9ff);
+        box-shadow: 0 0 12px rgba(255, 45, 85, 0.8);
+        transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      #status {
+        margin-top: 12px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.42);
+        min-height: 14px;
+      }
+      #version {
+        position: absolute;
+        right: 14px;
+        bottom: 11px;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        color: rgba(255, 255, 255, 0.25);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="card">
+      <canvas id="bg"></canvas>
+      <div id="ui">
+        <div id="word">DOMINO</div>
+        <div id="tag">MUSIC VISUALIZER</div>
+        <div id="barwrap"><div id="bar"></div></div>
+        <div id="status">starting</div>
+      </div>
+      <div id="version"></div>
+    </div>
+
+    <script>
+      const card = document.getElementById('card');
+      const bar = document.getElementById('bar');
+      const statusEl = document.getElementById('status');
+      const versionEl = document.getElementById('version');
+      requestAnimationFrame(() => card.classList.add('in'));
+
+      /*
+       * A fake but honest-feeling progress curve.
+       *
+       * Startup has no measurable total - shader compilation and library
+       * scanning take whatever they take - so the bar eases towards a ceiling
+       * and only completes when the app actually reports itself ready. It never
+       * reaches 100% on its own, because a bar that sits full while the app is
+       * still working is worse than one that is plainly still moving.
+       */
+      let progress = 0;
+      let target = 0.35;
+      function creep() {
+        progress += (target - progress) * 0.06;
+        bar.style.width = `${Math.min(progress, 0.97) * 100}%`;
+        if (progress < 0.999) requestAnimationFrame(creep);
+      }
+      creep();
+
+      if (window.dominoSplash) {
+        window.dominoSplash.onStage((stage, fraction) => {
+          statusEl.textContent = stage;
+          if (typeof fraction === 'number') target = Math.max(target, fraction);
+        });
+        window.dominoSplash.onDone(() => {
+          target = 1;
+          progress = 1;
+          bar.style.width = '100%';
+          statusEl.textContent = 'ready';
+          card.classList.add('out');
+        });
+        const v = window.dominoSplash.version;
+        if (v) versionEl.textContent = `v${v}`;
+        else versionEl.textContent = '';
+      }
+
+      /* ------------------------------ the visual ----------------------------- */
+
+      const canvas = document.getElementById('bg');
+
+      const VERT = `#version 300 es
+      in vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+
+      /*
+       * Domain-warped noise in Domino's palette: crimson bleeding into violet,
+       * kept dark so the wordmark stays the brightest thing on screen. The slow
+       * pulse is a stand-in for the bass the real visualiser would be reacting
+       * to - the splash has no audio, so it fakes a heartbeat rather than
+       * sitting still.
+       */
+      const FRAG = `#version 300 es
+      precision highp float;
+      uniform vec2  uRes;
+      uniform float uTime;
+      out vec4 outColor;
+
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+      float noise(vec2 p){
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
+                   mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+      }
+
+      float fbm(vec2 p){
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; }
+        return v;
+      }
+
+      void main(){
+        vec2 uv = gl_FragCoord.xy / uRes;
+        vec2 q = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+
+        float t = uTime * 0.09;
+        float pulse = 0.5 + 0.5 * sin(uTime * 1.9);
+        pulse = pow(pulse, 3.0);
+
+        // Warp the sampling position by another noise field, which is what
+        // turns flat clouds into something that looks like it is flowing.
+        vec2 w = vec2(fbm(q * 2.4 + vec2(t, -t)), fbm(q * 2.4 + vec2(5.2 - t, 1.3 + t)));
+        float f = fbm(q * 3.1 + w * 1.6 + t * 0.6);
+
+        vec3 crimson = vec3(0.95, 0.09, 0.24);
+        vec3 violet  = vec3(0.42, 0.10, 0.78);
+        vec3 ice     = vec3(0.20, 0.60, 0.95);
+
+        /*
+         * Embers in the dark, not a coloured wash.
+         *
+         * Raising the noise to a power crushes the midtones towards black and
+         * leaves only the peaks lit, which is what gives depth. The first
+         * version mixed colours across the whole range instead and read as a
+         * flat pink rectangle competing with the wordmark.
+         */
+        vec3 col = vec3(0.0);
+        col += crimson * pow(f, 3.2) * 1.15;
+        col += violet  * pow(f, 5.0) * 1.30;
+        col += ice     * pow(max(f - 0.62, 0.0), 1.8) * 0.55;
+
+        // A soft core behind the wordmark, breathing with the pulse.
+        float glow = exp(-dot(q, q) * 6.5);
+        col += vec3(0.80, 0.10, 0.28) * glow * (0.10 + 0.13 * pulse);
+
+        // A slow light sweep, so the panel never looks like a still image.
+        float sweep = smoothstep(0.0, 0.30, 1.0 - abs(fract(uTime * 0.10) * 2.6 - 1.3 - q.x));
+        col += vec3(0.32, 0.16, 0.58) * sweep * 0.05;
+
+        col *= 0.20 + 0.80 * smoothstep(1.15, 0.10, length(q));      // vignette
+        col = col / (col + 0.85);                                    // roll highlights off
+        col += (hash(gl_FragCoord.xy + uTime) - 0.5) * 0.022;        // grain
+        col *= 0.93 + 0.07 * sin(uv.y * uRes.y * 1.7);               // scanlines
+
+        outColor = vec4(max(col, 0.0), 1.0);
+      }`;
+
+      function startVisual() {
+        const gl = canvas.getContext('webgl2', {
+          antialias: false,
+          alpha: false,
+          powerPreference: 'low-power',
+        });
+        if (!gl) return false;
+
+        const compile = (type, src) => {
+          const sh = gl.createShader(type);
+          gl.shaderSource(sh, src);
+          gl.compileShader(sh);
+          if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) return null;
+          return sh;
+        };
+        const vs = compile(gl.VERTEX_SHADER, VERT);
+        const fs = compile(gl.FRAGMENT_SHADER, FRAG);
+        if (!vs || !fs) return false;
+
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.bindAttribLocation(prog, 0, 'p');
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+        gl.useProgram(prog);
+
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+        const uRes = gl.getUniformLocation(prog, 'uRes');
+        const uTime = gl.getUniformLocation(prog, 'uTime');
+        const start = performance.now();
+
+        const resize = () => {
+          // Capped device pixel ratio: this is a 560px panel shown for a couple
+          // of seconds and it should never compete with the app for the GPU.
+          const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+          canvas.width = Math.round(canvas.clientWidth * dpr);
+          canvas.height = Math.round(canvas.clientHeight * dpr);
+          gl.viewport(0, 0, canvas.width, canvas.height);
+        };
+        resize();
+        window.addEventListener('resize', resize);
+
+        const frame = () => {
+          gl.uniform2f(uRes, canvas.width, canvas.height);
+          gl.uniform1f(uTime, (performance.now() - start) / 1000);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          requestAnimationFrame(frame);
+        };
+        frame();
+        return true;
+      }
+
+      /*
+       * A splash screen must never be the reason the app fails to start, and it
+       * runs before the GPU has been proven to work at all - so a shader that
+       * will not compile falls back to a plain gradient rather than throwing.
+       */
+      try {
+        if (!startVisual()) {
+          canvas.style.display = 'none';
+          card.style.background =
+            'radial-gradient(120% 120% at 50% 40%, #2a0a1c 0%, #10060f 55%, #05060a 100%)';
+        }
+      } catch (err) {
+        canvas.style.display = 'none';
+        card.style.background =
+          'radial-gradient(120% 120% at 50% 40%, #2a0a1c 0%, #10060f 55%, #05060a 100%)';
+      }
+    </script>
+  </body>
+</html>

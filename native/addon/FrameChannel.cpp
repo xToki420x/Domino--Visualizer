@@ -106,6 +106,7 @@ bool FrameChannel::Open(uint32_t width, uint32_t height, uint32_t fpsNum,
   header->frameRateDen = fpsDen;
   header->heartbeat = 0;
   header->latestSlot = 0;
+  header->publishing = 1;
   header->version = kVersion;
 
   // Magic goes last: a reader that finds it can trust everything above it,
@@ -135,6 +136,16 @@ void FrameChannel::Close() {
     frameEvent_ = nullptr;
   }
   width_ = height_ = 0;
+}
+
+void FrameChannel::SetPublishing(bool publishing) {
+  if (!view_) return;
+  auto* header = reinterpret_cast<SharedHeader*>(view_);
+  header->publishing = publishing ? 1u : 0u;
+  MemoryBarrier();
+  // Wake a waiting consumer so a pause shows up immediately rather than after
+  // its next timeout.
+  if (frameEvent_) SetEvent(frameEvent_);
 }
 
 bool FrameChannel::WriteFrame(const uint8_t* data, size_t bytes,

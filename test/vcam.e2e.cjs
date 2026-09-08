@@ -107,7 +107,14 @@ require(path.join(ROOT, 'out/main/index.js'));
 app.whenReady().then(async () => {
   console.log('\nVirtual camera, end to end:\n');
 
-  const win = await until(async () => BrowserWindow.getAllWindows()[0], 20000);
+  // Skip the startup splash and attach to the app window itself.
+  const win = await until(
+    async () =>
+      BrowserWindow.getAllWindows().find(
+        (w) => !w.webContents.getURL().includes('splash'),
+      ),
+    20000,
+  );
   if (!win) {
     console.log('  FAIL  the app never opened a window');
     app.exit(1);
@@ -129,6 +136,24 @@ app.whenReady().then(async () => {
     return;
   }
   info('driver registered at', registration.path);
+
+  /*
+   * The registered driver is a path, and it may well point at an installed
+   * copy of Domino rather than this working tree. Publishing would then
+   * exercise somebody else's DLL, so this is a skip rather than a failure -
+   * and saying so beats a red run that looks like a regression.
+   */
+  const status0 = await win.webContents.executeJavaScript(
+    'window.domino.virtualCamera.status()',
+  );
+  if (!status0.registeredIsThisBuild) {
+    console.log('  SKIPPED: a different build is registered as the camera driver.');
+    console.log(`    registered: ${status0.registeredPath}`);
+    console.log(`    this build: ${status0.sourcePath}`);
+    console.log('  Re-register from the app (or install this build) to test it.');
+    app.exit(0);
+    return;
+  }
 
   const toggled = await win.webContents.executeJavaScript(ENABLE_CAMERA);
   check('the Publish as Webcam control exists', toggled.found === true);

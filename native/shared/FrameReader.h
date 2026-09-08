@@ -78,6 +78,11 @@ class FrameReader {
   uint32_t Height() const {
     return view_ ? reinterpret_cast<const SharedHeader*>(view_)->height : 0;
   }
+  /** False when Domino is attached but paused. */
+  bool Publishing() const {
+    return view_ &&
+           reinterpret_cast<const SharedHeader*>(view_)->publishing != 0;
+  }
   uint32_t Heartbeat() const {
     return view_ ? reinterpret_cast<const SharedHeader*>(view_)->heartbeat : 0;
   }

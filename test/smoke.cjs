@@ -177,11 +177,26 @@ const LOAD_EACH = `
 `;
 
 app.whenReady().then(async () => {
-  // Wait for the window the real main process creates.
+  /*
+   * Wait for the *app* window the real main process creates.
+   *
+   * There is also a splash window during startup, so taking whichever window
+   * exists first would attach to that and then watch it close.
+   */
+  const isMain = (w) => !w.webContents.getURL().includes('splash');
   const win = await new Promise((resolve) => {
-    const existing = BrowserWindow.getAllWindows()[0];
+    const existing = BrowserWindow.getAllWindows().find(isMain);
     if (existing) return resolve(existing);
-    app.once('browser-window-created', (_e, created) => resolve(created));
+    const onCreated = (_e, created) => {
+      // The URL is not set at creation time, so decide once it starts loading.
+      created.webContents.once('did-start-loading', () => {
+        if (isMain(created)) {
+          app.off('browser-window-created', onCreated);
+          resolve(created);
+        }
+      });
+    };
+    app.on('browser-window-created', onCreated);
   });
 
   await new Promise((resolve) => {

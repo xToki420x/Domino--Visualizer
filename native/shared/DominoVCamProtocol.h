@@ -32,7 +32,7 @@ inline constexpr wchar_t kSharedMemoryName[] = L"Global\\DominoVCamFrames_v1";
 inline constexpr wchar_t kFrameEventName[] = L"Global\\DominoVCamFrameReady_v1";
 
 inline constexpr uint32_t kMagic = 0x4F4E4D44;  // 'DMNO' little-endian
-inline constexpr uint32_t kVersion = 1;
+inline constexpr uint32_t kVersion = 2;
 
 inline constexpr uint32_t kMaxWidth = 1920;
 inline constexpr uint32_t kMaxHeight = 1080;
@@ -76,6 +76,17 @@ struct SharedHeader {
   // Domino has gone away and emit black rather than freezing on a stale frame.
   volatile uint32_t heartbeat;
   volatile uint32_t latestSlot;
+
+  /*
+   * Zero while Domino is running but deliberately not publishing.
+   *
+   * The channel stays open across a pause so the frame size on offer never
+   * changes underneath a consumer that already negotiated it. Without this
+   * flag a paused producer would simply stop bumping the heartbeat, and the
+   * source would sit on its last frame - a frozen picture, which reads as a
+   * crash rather than as "switched off".
+   */
+  volatile uint32_t publishing;
 
   SlotHeader slots[kSlotCount];
 };

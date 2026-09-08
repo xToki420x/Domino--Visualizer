@@ -210,6 +210,12 @@ export interface DominoApi {
     sendFrame(frame: Uint8Array): void;
   };
 
+  /** Progress reporting for the startup splash, which the main process owns. */
+  splash: {
+    stage(stage: string, fraction?: number): void;
+    ready(): void;
+  };
+
   /** Fires when the main process asks the renderer to do something (menu, hotkey). */
   onCommand(cb: (command: string, payload?: unknown) => void): () => void;
 }

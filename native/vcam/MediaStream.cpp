@@ -395,7 +395,9 @@ HRESULT MediaStream::FillBuffer(IMFMediaBuffer* buffer) {
   uint32_t frameWidth = 0;
   uint32_t frameHeight = 0;
   size_t bytes = 0;
-  if (reader_.IsOpen()) {
+  // A paused producer means black, not the last frame it happened to send.
+  if (reader_.IsOpen() && !reader_.Publishing()) scratchValid_ = false;
+  if (reader_.IsOpen() && reader_.Publishing()) {
     bytes = reader_.ReadLatest(scratch_, frameBytes_, &frameWidth, &frameHeight);
     // A frame of a different size cannot be shown under the media type already
     // negotiated, and silently stretching it would misrepresent what the

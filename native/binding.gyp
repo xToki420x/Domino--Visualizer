@@ -37,7 +37,8 @@
               "-lole32.lib",
               "-loleaut32.lib",
               "-ladvapi32.lib",
-              "-lshell32.lib"
+              "-lshell32.lib",
+              "-lstrmiids.lib"
             ],
             "msvs_settings": {
               "VCCLCompilerTool": {

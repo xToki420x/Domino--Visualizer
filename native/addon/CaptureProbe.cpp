@@ -8,6 +8,7 @@
 #include <ks.h>
 #include <ksproxy.h>
 #include <mfcaptureengine.h>
+#include <dshow.h>
 #include <wrl/client.h>
 
 #include <cstdio>
@@ -145,6 +146,52 @@ bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error) {
   if (!names) return false;
   names->clear();
   return RunInMta([&] { return EnumerateCamerasInMta(names, error); });
+}
+
+namespace {
+
+bool EnumerateDirectShowInMta(std::vector<std::wstring>* names,
+                              std::wstring* error) {
+  ComPtr<ICreateDevEnum> devices;
+  HRESULT hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr,
+                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&devices));
+  if (FAILED(hr)) {
+    if (error) *error = L"Could not create the DirectShow device enumerator";
+    return false;
+  }
+
+  ComPtr<IEnumMoniker> monikers;
+  hr = devices->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &monikers,
+                                      0);
+  // S_FALSE means the category is empty, which is an answer rather than a
+  // failure - a machine with no cameras at all is perfectly legal.
+  if (hr != S_OK) return true;
+
+  ComPtr<IMoniker> moniker;
+  while (monikers->Next(1, moniker.ReleaseAndGetAddressOf(), nullptr) == S_OK) {
+    ComPtr<IPropertyBag> properties;
+    if (FAILED(moniker->BindToStorage(nullptr, nullptr,
+                                      IID_PPV_ARGS(&properties)))) {
+      continue;
+    }
+    VARIANT value;
+    VariantInit(&value);
+    if (SUCCEEDED(properties->Read(L"FriendlyName", &value, nullptr)) &&
+        value.vt == VT_BSTR && value.bstrVal) {
+      names->push_back(value.bstrVal);
+    }
+    VariantClear(&value);
+  }
+  return true;
+}
+
+}  // namespace
+
+bool EnumerateDirectShowCameras(std::vector<std::wstring>* names,
+                                std::wstring* error) {
+  if (!names) return false;
+  names->clear();
+  return RunInMta([&] { return EnumerateDirectShowInMta(names, error); });
 }
 
 namespace {

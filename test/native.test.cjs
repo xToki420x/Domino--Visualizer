@@ -31,8 +31,8 @@ try {
 check('module exposes its API',
   ['registerSource','registerSourceElevated','unregisterSource','isRegistered',
    'openChannel','closeChannel','start','stop','isRunning','writeFrame',
-   'listCameras','mediaFoundationAvailable','probeSourceClass',
-   'captureFromDllForTest']
+   'listCameras','listDirectShowCameras','mediaFoundationAvailable',
+   'setPublishing','removeCamera','probeSourceClass','captureFromDllForTest']
     .every((k) => typeof vcam[k] === 'function'));
 
 check('nothing is running on a cold start', vcam.isRunning() === false);
@@ -193,6 +193,39 @@ if (!fs.existsSync(DLL)) {
     check(
       'chroma survives the round trip byte for byte',
       Buffer.compare(shot.data.subarray(CW * CH), source.subarray(CW * CH)) === 0,
+    );
+  }
+
+  /*
+   * Pausing must show black rather than freeze on the last frame. The channel
+   * deliberately stays open across a pause - closing it would change the frame
+   * size a newly created source picks up - so the source has to notice the
+   * flag instead of the absence of the channel.
+   */
+  vcam.setPublishing(false);
+  const paused = vcam.captureFromDllForTest(DLL, 8000);
+  check('a paused producer still delivers frames', paused.ok === true, paused.error);
+  if (paused.ok) {
+    check(
+      'paused frames are black, not the last picture',
+      paused.data[0] === 16 && paused.data[paused.width * paused.height] === 128,
+      `luma ${paused.data[0]}, chroma ${paused.data[paused.width * paused.height]}`,
+    );
+    check(
+      'the frame size is unchanged by pausing',
+      paused.width === CW && paused.height === CH,
+      `${paused.width}x${paused.height}`,
+    );
+  }
+
+  vcam.setPublishing(true);
+  vcam.writeFrame(source);
+  const resumed = vcam.captureFromDllForTest(DLL, 8000);
+  check('resuming brings the picture back', resumed.ok === true, resumed.error);
+  if (resumed.ok) {
+    check(
+      'resumed luma matches what was published',
+      Buffer.compare(resumed.data.subarray(0, CW * CH), source.subarray(0, CW * CH)) === 0,
     );
   }
 

@@ -254,7 +254,9 @@ export class DisplayPanel {
     label.textContent = 'Publish as Webcam';
     label.title =
       'Makes Domino selectable as a camera in Zoom, Discord, Meet and anything ' +
-      'else that takes a webcam.';
+      'else that takes a webcam. The camera stays in the list once enabled, so ' +
+      'apps that were already open can still find it; it shows black until ' +
+      'this is switched on.';
 
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -337,7 +339,11 @@ export class DisplayPanel {
     if (status.running) {
       return `Live at ${status.width}x${status.height}, ${status.fps}fps. ${status.framesWritten} frames sent. Pick "${this.settings.virtualCameraName}" in your video app.`;
     }
-    return 'Ready. Turn this on, then choose Domino as your camera.';
+    return (
+      'Ready. Switch this on, then choose Domino as your camera. Apps list ' +
+      'cameras when they start, so open Domino before joining a call - or ' +
+      'restart the call app once, after which it will remember.'
+    );
   }
 
   /** A labelled dropdown, matching the shape of the sliders above it. */

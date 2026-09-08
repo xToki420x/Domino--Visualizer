@@ -49,6 +49,93 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
+let splashTimeout: NodeJS.Timeout | null = null;
+
+/**
+ * The splash window.
+ *
+ * Domino takes a couple of seconds to be useful - it scans the preset library,
+ * compiles shaders and brings up a GL context - and an app that shows nothing
+ * at all during that reads as one that failed to launch. This appears in the
+ * first frames of the process and hands over the moment the renderer says it
+ * is actually ready.
+ *
+ * Suppressed for --selftest and for the test harnesses, which attach to
+ * whichever window they find and should not have to guess between two.
+ */
+function splashEnabled(): boolean {
+  return (
+    !process.argv.includes('--selftest') &&
+    !process.argv.includes('--no-splash') &&
+    process.env.DOMINO_NO_SPLASH !== '1'
+  );
+}
+
+function createSplash(): void {
+  if (!splashEnabled()) return;
+
+  splashWindow = new BrowserWindow({
+    width: 560,
+    height: 340,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    center: true,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/splash.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  splashWindow.once('ready-to-show', () => splashWindow?.show());
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+
+  if (isDev && process.env.ELECTRON_RENDERER_URL) {
+    void splashWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/splash.html`);
+  } else {
+    void splashWindow.loadFile(path.join(__dirname, '../renderer/splash.html'));
+  }
+}
+
+/**
+ * Hand over from the splash to the app.
+ *
+ * Idempotent, because it is reached from two directions: the renderer saying
+ * it is ready, and a timeout for when it never does. A splash that outlives a
+ * renderer which failed to start would leave the user with nothing but an
+ * animation, which is worse than showing them a broken window.
+ */
+function finishSplash(): void {
+  if (splashTimeout) {
+    clearTimeout(splashTimeout);
+    splashTimeout = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+
+  const splash = splashWindow;
+  splashWindow = null;
+  splash.webContents.send('splash:done');
+  // Long enough for the fade-out in the splash page to play, short enough that
+  // nobody is left looking at two windows.
+  setTimeout(() => {
+    if (!splash.isDestroyed()) splash.close();
+  }, 260);
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -70,7 +157,19 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  /*
+   * With a splash up, the main window waits for the renderer to report itself
+   * ready rather than for first paint - first paint happens long before the
+   * library is loaded and the first visual is on screen.
+   */
+  mainWindow.once('ready-to-show', () => {
+    if (!splashWindow) mainWindow?.show();
+  });
+
+  if (splashWindow) {
+    // Never let a renderer that fails to signal leave the app invisible.
+    splashTimeout = setTimeout(finishSplash, 15000);
+  }
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -406,6 +505,16 @@ function registerIpc(): void {
   ipcMain.handle('window:minimize', () => mainWindow?.minimize());
   ipcMain.handle('window:close', () => mainWindow?.close());
 
+  ipcMain.on('splash:stage', (_e, stage: unknown, fraction: unknown) => {
+    if (!splashWindow || splashWindow.isDestroyed()) return;
+    splashWindow.webContents.send(
+      'splash:stage',
+      String(stage ?? ''),
+      typeof fraction === 'number' ? fraction : undefined,
+    );
+  });
+  ipcMain.on('app:ready', () => finishSplash());
+
   ipcMain.handle('vcam:status', () => virtualCamera.getStatus());
   ipcMain.handle(
     'vcam:start',
@@ -442,6 +551,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(() => {
+    createSplash();
     installPermissionHandlers();
     registerIpc();
     createWindow();
