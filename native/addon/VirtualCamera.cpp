@@ -180,7 +180,20 @@ bool VirtualCamera::Start(const std::wstring& friendlyName,
   hr = camera_->Start(nullptr);
   if (FAILED(hr)) {
     if (error) {
-      *error = WithHr(L"The virtual camera was created but would not start", hr);
+      /*
+       * A service timeout here almost always means the Windows camera service
+       * is still tearing down a previous session - most often after a copy of
+       * Domino was killed rather than closed. It clears on its own, so say so
+       * instead of leaving the user staring at an HRESULT.
+       */
+      *error =
+          hr == HRESULT_FROM_WIN32(ERROR_SERVICE_REQUEST_TIMEOUT)
+              ? WithHr(L"The Windows camera service did not respond in time. "
+                       L"This usually clears after a few seconds, once any "
+                       L"previous copy of Domino has fully exited.",
+                       hr)
+              : WithHr(L"The virtual camera was created but would not start",
+                       hr);
     }
     camera_->Remove();
     camera_.Reset();

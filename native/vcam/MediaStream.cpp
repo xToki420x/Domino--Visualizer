@@ -1,6 +1,7 @@
 #include "MediaStream.h"
 
 #include "MediaSource.h"
+#include "Trace.h"
 
 namespace domino {
 
@@ -36,6 +37,7 @@ MediaStream::~MediaStream() {
   if (eventQueue_) eventQueue_->Release();
   if (descriptor_) descriptor_->Release();
   if (mediaType_) mediaType_->Release();
+  if (allocator_) allocator_->Release();
   delete[] scratch_;
 }
 
@@ -96,6 +98,43 @@ HRESULT MediaStream::Initialize(MediaSource* parent, uint32_t width,
   descriptor_->SetUINT32(MF_DEVICESTREAM_FRAMESERVER_SHARED, 1);
   descriptor_->SetUINT32(MF_DEVICESTREAM_ATTRIBUTE_FRAMESOURCE_TYPES,
                          MFFrameSourceTypes_Color);
+  return S_OK;
+}
+
+HRESULT MediaStream::SetAllocator(IUnknown* allocator) {
+  {
+    Guard guard(lock_);
+    if (allocator_) {
+      allocator_->Release();
+      allocator_ = nullptr;
+    }
+  }
+  if (!allocator) return S_OK;
+
+  IMFVideoSampleAllocator* video = nullptr;
+  HRESULT hr = allocator->QueryInterface(IID_PPV_ARGS(&video));
+  if (FAILED(hr)) {
+    Trace("SetAllocator: not a video sample allocator -> 0x%08lX", hr);
+    return hr;
+  }
+
+  /*
+   * Initialised outside the lock. This call reaches back into the host, and
+   * holding our own lock across it would let a callback from that host - a
+   * RequestSample on another thread, say - deadlock against us.
+   *
+   * Four samples keeps one in flight, one being filled and a little slack,
+   * without pinning more shared memory than the camera needs.
+   */
+  hr = video->InitializeSampleAllocator(4, mediaType_);
+  Trace("SetAllocator: initialised -> 0x%08lX", hr);
+  if (FAILED(hr)) {
+    video->Release();
+    return hr;
+  }
+
+  Guard guard(lock_);
+  allocator_ = video;
   return S_OK;
 }
 
@@ -195,6 +234,14 @@ IFACEMETHODIMP MediaStream::RequestSample(IUnknown* token) {
   // Deliberately outside the lock: this blocks for up to a frame interval
   // waiting on the visualiser, and holding the lock would make Stop() wait for
   // a frame that may never come.
+  //
+  // Traced sparsely - this runs thirty times a second, and a line per frame
+  // would bury everything else in the log.
+  if (requestCount_ < 3 || requestCount_ % 100 == 0) {
+    Trace("RequestSample #%u", requestCount_);
+  }
+  requestCount_++;
+
   IMFSample* sample = nullptr;
   HRESULT hr = CreateSample(token, &sample);
   if (FAILED(hr)) return hr;
@@ -223,6 +270,7 @@ IFACEMETHODIMP MediaStream::SetStreamState(MF_STREAM_STATE state) {
       if (state_ == MF_STREAM_STATE_RUNNING) state_ = MF_STREAM_STATE_PAUSED;
       return S_OK;
     case MF_STREAM_STATE_RUNNING:
+      Trace("SetStreamState RUNNING");
       state_ = MF_STREAM_STATE_RUNNING;
       return S_OK;
     case MF_STREAM_STATE_STOPPED:
@@ -252,6 +300,7 @@ HRESULT MediaStream::Start() {
     lastHeartbeat_ = 0;
     scratchValid_ = false;
   }
+  Trace("MediaStream::Start %ux%u", width_, height_);
   return QueueEvent(MEStreamStarted, GUID_NULL, S_OK, nullptr);
 }
 
@@ -261,18 +310,29 @@ HRESULT MediaStream::Stop() {
     if (shutdown_) return MF_E_SHUTDOWN;
     state_ = MF_STREAM_STATE_STOPPED;
   }
-  reader_.Close();
+  {
+    // Waits for at most the frame interval a producer request is already
+    // inside; closing the mapping out from under that copy would be a use
+    // after free in the Frame Server.
+    Guard readerGuard(readerLock_);
+    reader_.Close();
+    scratchValid_ = false;
+  }
   return QueueEvent(MEStreamStopped, GUID_NULL, S_OK, nullptr);
 }
 
 void MediaStream::Shutdown() {
-  Guard guard(lock_);
-  if (shutdown_) return;
-  shutdown_ = true;
-  state_ = MF_STREAM_STATE_STOPPED;
-  if (eventQueue_) eventQueue_->Shutdown();
+  {
+    Guard guard(lock_);
+    if (shutdown_) return;
+    shutdown_ = true;
+    state_ = MF_STREAM_STATE_STOPPED;
+    if (eventQueue_) eventQueue_->Shutdown();
+    parent_ = nullptr;
+  }
+  Guard readerGuard(readerLock_);
   reader_.Close();
-  parent_ = nullptr;
+  scratchValid_ = false;
 }
 
 // --- Frame production -------------------------------------------------------
@@ -311,6 +371,10 @@ void MediaStream::WaitForNextFrame() {
 }
 
 HRESULT MediaStream::FillBuffer(IMFMediaBuffer* buffer) {
+  // Held across the wait and the copy: the reader, the scratch buffer and the
+  // heartbeat are one consistent unit, and Stop() may be closing them.
+  Guard readerGuard(readerLock_);
+
   IMF2DBuffer2* buffer2d = nullptr;
   HRESULT hr = buffer->QueryInterface(IID_PPV_ARGS(&buffer2d));
   if (FAILED(hr)) return hr;
@@ -337,6 +401,7 @@ HRESULT MediaStream::FillBuffer(IMFMediaBuffer* buffer) {
     // negotiated, and silently stretching it would misrepresent what the
     // camera produces. Keep showing the previous frame instead.
     if (bytes > 0 && (frameWidth != width_ || frameHeight != height_)) bytes = 0;
+    if (bytes > 0 && !scratchValid_) Trace("first real frame read from Domino");
     if (bytes > 0) {
       scratchValid_ = true;
       lastHeartbeat_ = reader_.Heartbeat();
@@ -380,30 +445,57 @@ HRESULT MediaStream::FillBuffer(IMFMediaBuffer* buffer) {
 HRESULT MediaStream::CreateSample(IUnknown* token, IMFSample** out) {
   *out = nullptr;
 
+  IMFSample* sample = nullptr;
   IMFMediaBuffer* buffer = nullptr;
-  HRESULT hr = MFCreate2DMediaBuffer(width_, height_, MFVideoFormat_NV12.Data1,
-                                     FALSE, &buffer);
-  if (FAILED(hr)) return hr;
+  HRESULT hr = S_OK;
+
+  IMFVideoSampleAllocator* allocator = nullptr;
+  {
+    Guard guard(lock_);
+    allocator = allocator_;
+    if (allocator) allocator->AddRef();
+  }
+
+  if (allocator) {
+    // Preferred path: the sample and its buffer come from the host, so the
+    // pixels land somewhere it can hand straight to another process.
+    hr = allocator->AllocateSample(&sample);
+    if (SUCCEEDED(hr)) hr = sample->GetBufferByIndex(0, &buffer);
+    allocator->Release();
+    if (FAILED(hr)) {
+      if (sample) sample->Release();
+      return hr;
+    }
+  } else {
+    // Fallback for hosts that never provide one - our own probe, and any
+    // consumer that talks to the source directly rather than through the
+    // Frame Server.
+    hr = MFCreate2DMediaBuffer(width_, height_, MFVideoFormat_NV12.Data1, FALSE,
+                               &buffer);
+    if (FAILED(hr)) return hr;
+    hr = MFCreateSample(&sample);
+    if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer);
+    if (FAILED(hr)) {
+      buffer->Release();
+      if (sample) sample->Release();
+      return hr;
+    }
+  }
 
   hr = FillBuffer(buffer);
-  if (FAILED(hr)) {
-    buffer->Release();
-    return hr;
-  }
-
-  IMFSample* sample = nullptr;
-  hr = MFCreateSample(&sample);
-  if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer);
   buffer->Release();
   if (FAILED(hr)) {
-    if (sample) sample->Release();
+    sample->Release();
     return hr;
   }
 
-  // Timestamps run off the system clock rather than a frame counter: this is a
-  // live source, and a counter would drift against the consumer clock every
-  // time we dropped or repeated a frame.
-  sample->SetSampleTime(MFGetSystemTime() - startTime100ns_);
+  /*
+   * Absolute system time, not time-since-start. This is a live capture source,
+   * and consumers line our frames up against the same clock the rest of the
+   * pipeline uses; a counter, or a clock rebased to our own start, would drift
+   * against them every time a frame was dropped or repeated.
+   */
+  sample->SetSampleTime(MFGetSystemTime());
   sample->SetSampleDuration(frameDuration100ns_);
   sample->SetUINT32(MFSampleExtension_CleanPoint, TRUE);
   if (token) sample->SetUnknown(MFSampleExtension_Token, token);

@@ -11,10 +11,25 @@
 
 namespace domino {
 
-// Session-local, so two users on the same machine get separate channels and
-// neither needs elevated rights to create the mapping.
-inline constexpr wchar_t kSharedMemoryName[] = L"Local\\DominoVCamFrames_v1";
-inline constexpr wchar_t kFrameEventName[] = L"Local\\DominoVCamFrameReady_v1";
+/*
+ * Global, not Local.
+ *
+ * The two ends of this channel do not merely live in different processes -
+ * they live in different *sessions*. Domino runs in the interactive user's
+ * session; the Windows Camera Frame Server, which hosts the media source, runs
+ * as a service in session 0. The Local namespace is per-session, so a Local
+ * name resolves to two entirely separate objects for those two processes: the
+ * source opens nothing, silently falls back to its default frame size, and
+ * publishes black.
+ *
+ * Creating a Global object needs the "create global objects" right, which
+ * Windows grants to INTERACTIVE by default - so an ordinary desktop user has
+ * it, and no elevation is involved. The cost is that the name is machine-wide:
+ * two users publishing at once would collide, which FrameChannel::Open detects
+ * and reports rather than letting them quietly overwrite each other.
+ */
+inline constexpr wchar_t kSharedMemoryName[] = L"Global\\DominoVCamFrames_v1";
+inline constexpr wchar_t kFrameEventName[] = L"Global\\DominoVCamFrameReady_v1";
 
 inline constexpr uint32_t kMagic = 0x4F4E4D44;  // 'DMNO' little-endian
 inline constexpr uint32_t kVersion = 1;

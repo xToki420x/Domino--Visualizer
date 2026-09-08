@@ -7,8 +7,9 @@
 
 #include "Precomp.h"
 
-#include "MediaSource.h"
+#include "MediaSourceActivate.h"
 #include "SourceRegistration.h"
+#include "Trace.h"
 
 namespace domino {
 
@@ -57,7 +58,16 @@ class ClassFactory : public IClassFactory {
     // Aggregation would let a containing object intercept our QueryInterface,
     // and a media source has no use for it.
     if (outer) return CLASS_E_NOAGGREGATION;
-    return MediaSource::Create(riid, ppv);
+    /*
+     * An activate object, not the media source itself. Windows creates this
+     * from the CLSID and calls ActivateObject when something opens the camera;
+     * returning a media source here is accepted by CoCreateInstance and then
+     * rejected by the Frame Server with an unexplained E_NOINTERFACE.
+     */
+    Trace("ClassFactory::CreateInstance");
+    HRESULT hr = MediaSourceActivate::Create(riid, ppv);
+    Trace("ClassFactory::CreateInstance -> 0x%08lX", hr);
+    return hr;
   }
 
   IFACEMETHODIMP LockServer(BOOL lock) override {
@@ -82,7 +92,9 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv) {
   if (!ppv) return E_POINTER;
   *ppv = nullptr;
 
+  domino::Trace("DllGetClassObject");
   if (rclsid != domino::kClsidDominoMediaSource) {
+    domino::Trace("DllGetClassObject -> wrong CLSID");
     return CLASS_E_CLASSNOTAVAILABLE;
   }
 
@@ -131,6 +143,7 @@ STDAPI DllUnregisterServer() {
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID /*reserved*/) {
   if (reason == DLL_PROCESS_ATTACH) {
     domino::g_module = module;
+    domino::Trace("DLL_PROCESS_ATTACH");
     // No per-thread state here, and the Frame Server creates threads freely.
     DisableThreadLibraryCalls(module);
   }

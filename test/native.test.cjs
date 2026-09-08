@@ -104,6 +104,16 @@ if (!fs.existsSync(DLL)) {
   const probe = vcam.probeSourceClass(DLL);
   check('the DLL creates a media source', probe.ok === true, probe.error);
 
+  // The registered CLSID must resolve to an activate object, not to the source
+  // itself. Windows creates the class, queries this, and calls ActivateObject;
+  // a class that hands back a media source directly is created successfully
+  // and then rejected by the Frame Server with a bare E_NOINTERFACE.
+  check(
+    'the CLSID resolves to an activate object',
+    probe.interfaces?.['IMFActivate (on the class)'] === 0,
+    `hr 0x${((probe.interfaces?.['IMFActivate (on the class)'] ?? -1) >>> 0).toString(16)}`,
+  );
+
   const required = [
     'IMFMediaSource',
     'IMFMediaSourceEx',

@@ -141,6 +141,11 @@ export interface VirtualCameraStatus {
   fps: number;
   framesWritten: number;
   registeredPath: string;
+  /**
+   * The registered driver is the same binary this copy of Domino ships.
+   * A stale registration loads an older DLL, which opens to a black camera.
+   */
+  registeredIsThisBuild: boolean;
   /** The DLL a user would hand to regsvr32; empty when this build has none. */
   sourcePath: string;
   error: string;

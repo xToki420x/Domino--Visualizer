@@ -166,6 +166,24 @@ async function runSelfTest(win: BrowserWindow): Promise<void> {
       `selftest: packaged=${app.isPackaged} resources=${process.resourcesPath} ` +
         `library=${probe.entries} visual="${probe.title}" fps=${probe.fps}`,
     );
+
+    /*
+     * The virtual camera binaries are shipped as extra resources, so packaging
+     * can drop them without anything else noticing. Whether the driver is
+     * registered depends on the machine and is not a build problem, but the
+     * module failing to load in a packaged build always is.
+     */
+    const camera = virtualCamera.getStatus();
+    console.log(
+      `selftest: vcam available=${camera.available} registered=${camera.registered} ` +
+        `driver=${camera.sourcePath || '(missing)'}`,
+    );
+    if (!camera.available) {
+      problems.push(`virtual camera module did not load: ${camera.error}`);
+    }
+    if (!camera.sourcePath) {
+      problems.push('virtual camera driver was not packaged');
+    }
   } catch (err) {
     problems.push(`probe failed: ${(err as Error).message}`);
   }

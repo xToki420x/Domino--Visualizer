@@ -57,7 +57,24 @@ bool FrameChannel::Open(uint32_t width, uint32_t height, uint32_t fpsNum,
       static_cast<DWORD>(kTotalBytes >> 32),
       static_cast<DWORD>(kTotalBytes & 0xFFFFFFFFu), kSharedMemoryName);
   if (!mapping_) {
-    if (error) *error = L"CreateFileMapping failed";
+    if (error) {
+      *error = GetLastError() == ERROR_ACCESS_DENIED
+                   ? L"Windows refused to create the shared frame buffer. This "
+                     L"account may not have the right to create global objects."
+                   : L"CreateFileMapping failed";
+    }
+    return false;
+  }
+
+  // The name is machine-wide, so an existing mapping means another Domino is
+  // already publishing. Opening it anyway would have two processes writing the
+  // same slots, which shows up as a torn, flickering camera.
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (error) {
+      *error =
+          L"Another copy of Domino is already publishing the virtual camera.";
+    }
+    Close();
     return false;
   }
 

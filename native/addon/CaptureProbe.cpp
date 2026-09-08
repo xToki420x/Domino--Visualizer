@@ -10,11 +10,51 @@
 #include <mfcaptureengine.h>
 #include <wrl/client.h>
 
+#include <cstdio>
+#include <thread>
+
 namespace domino {
 
 using Microsoft::WRL::ComPtr;
 
 namespace {
+
+/**
+ * Progress reporting for the probe, on stderr when DOMINO_VCAM_VERBOSE is set.
+ *
+ * Opening a camera is a chain of calls into another process, any of which can
+ * block indefinitely; knowing which one stopped is the difference between a
+ * diagnosis and a guess.
+ */
+void Step(const char* what) {
+  static const bool verbose = getenv("DOMINO_VCAM_VERBOSE") != nullptr;
+  if (!verbose) return;
+  fprintf(stderr, "[vcam] %s\n", what);
+  fflush(stderr);
+}
+
+/**
+ * Run `work` on a fresh thread that has joined the multithreaded apartment.
+ *
+ * Opening a Frame Server camera marshals calls into another process. On a
+ * single-threaded apartment that needs a running message pump, and a process
+ * blocking on the result simply deadlocks - which is what happened here,
+ * identically for our own camera and for an unrelated vendor one, until this
+ * was added. A dedicated MTA thread sidesteps the question entirely and costs
+ * one thread per probe.
+ */
+template <typename Work>
+bool RunInMta(Work work) {
+  bool result = false;
+  std::thread worker([&] {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr)) return;
+    result = work();
+    CoUninitialize();
+  });
+  worker.join();
+  return result;
+}
 
 /** RAII around MFStartup so an early return cannot leave MF initialised. */
 class MFSession {
@@ -58,10 +98,9 @@ bool Contains(const std::wstring& haystack, const std::wstring& needle) {
 
 }  // namespace
 
-bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error) {
-  if (!names) return false;
-  names->clear();
+namespace {
 
+bool EnumerateCamerasInMta(std::vector<std::wstring>* names, std::wstring* error) {
   MFSession session;
   if (FAILED(session.Start())) {
     if (error) *error = L"MFStartup failed";
@@ -91,13 +130,23 @@ bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error) {
   return true;
 }
 
+}  // namespace
+
+bool EnumerateCameras(std::vector<std::wstring>* names, std::wstring* error) {
+  if (!names) return false;
+  names->clear();
+  return RunInMta([&] { return EnumerateCamerasInMta(names, error); });
+}
+
 namespace {
 
 /** Drive a media source with a source reader until one frame comes out. */
 bool ReadFirstSample(IMFMediaSource* source, uint32_t timeoutMs,
                      CapturedFrame* out, std::wstring* error) {
+  Step("creating the source reader");
   ComPtr<IMFSourceReader> reader;
   HRESULT hr = MFCreateSourceReaderFromMediaSource(source, nullptr, &reader);
+  Step("source reader created");
   if (FAILED(hr)) {
     if (error) *error = L"Could not create a source reader for the camera";
     return false;
@@ -166,10 +215,10 @@ bool ReadFirstSample(IMFMediaSource* source, uint32_t timeoutMs,
 
 }  // namespace
 
-bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
-                     CapturedFrame* out, std::wstring* error) {
-  if (!out) return false;
+namespace {
 
+bool CaptureOneFrameInMta(const std::wstring& nameContains, uint32_t timeoutMs,
+                          CapturedFrame* out, std::wstring* error) {
   MFSession session;
   if (FAILED(session.Start())) {
     if (error) *error = L"MFStartup failed";
@@ -182,12 +231,14 @@ bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
     return false;
   }
 
+  Step("enumerating devices");
   IMFActivate** devices = nullptr;
   UINT32 count = 0;
   if (FAILED(MFEnumDeviceSources(attributes.Get(), &devices, &count))) {
     if (error) *error = L"MFEnumDeviceSources failed";
     return false;
   }
+  Step("enumerated");
 
   ComPtr<IMFMediaSource> source;
   std::wstring chosenName;
@@ -195,8 +246,12 @@ bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
     std::wstring name;
     if (!source && FriendlyName(devices[i], &name) &&
         Contains(name, nameContains)) {
+      Step("activating the matching device");
       if (SUCCEEDED(devices[i]->ActivateObject(IID_PPV_ARGS(&source)))) {
         chosenName = name;
+        Step("activated");
+      } else {
+        Step("activation failed");
       }
     }
     devices[i]->Release();
@@ -208,10 +263,21 @@ bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
     return false;
   }
 
+  Step("reading a sample");
   const bool ok = ReadFirstSample(source.Get(), timeoutMs, out, error);
+  Step(ok ? "sample read" : "sample read failed");
   if (ok) out->deviceName = chosenName;
   source->Shutdown();
   return ok;
+}
+
+}  // namespace
+
+bool CaptureOneFrame(const std::wstring& nameContains, uint32_t timeoutMs,
+                     CapturedFrame* out, std::wstring* error) {
+  if (!out) return false;
+  return RunInMta(
+      [&] { return CaptureOneFrameInMta(nameContains, timeoutMs, out, error); });
 }
 
 namespace {
@@ -222,6 +288,9 @@ constexpr GUID kClsidDominoMediaSource = {
 
 /**
  * Do by hand what COM does once it has resolved a CLSID.
+ *
+ * What comes back is an activate object, not the media source: that is the
+ * contract for a camera CLSID, and ActivateSource below takes the second step.
  *
  * On success the caller owns both the object and a reference on the module,
  * and must release the object before calling FreeLibrary - unloading a DLL
@@ -270,6 +339,21 @@ bool CreateSourceFromDll(const std::wstring& dllPath, HMODULE* moduleOut,
   return true;
 }
 
+/** Take the activate object the class factory returned and open the source. */
+bool ActivateSource(IUnknown* object, IMFMediaSource** source,
+                    std::wstring* error) {
+  ComPtr<IMFActivate> activate;
+  if (FAILED(object->QueryInterface(IID_PPV_ARGS(activate.GetAddressOf())))) {
+    if (error) *error = L"The class is not an activate object";
+    return false;
+  }
+  if (FAILED(activate->ActivateObject(IID_PPV_ARGS(source)))) {
+    if (error) *error = L"ActivateObject did not produce a media source";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool ProbeSourceClass(const std::wstring& dllPath,
@@ -286,8 +370,26 @@ bool ProbeSourceClass(const std::wstring& dllPath,
 
   HMODULE module = nullptr;
   ComPtr<IUnknown> unknown;
+  IUnknown* probeSink = nullptr;
   if (!CreateSourceFromDll(dllPath, &module, unknown.GetAddressOf(), createHr,
                            error)) {
+    return false;
+  }
+
+  // The class object itself is the activate; the source lives behind it.
+  results->push_back(
+      {L"IMFActivate (on the class)",
+       static_cast<int32_t>(unknown->QueryInterface(
+           __uuidof(IMFActivate), reinterpret_cast<void**>(&probeSink)))});
+  if (probeSink) {
+    probeSink->Release();
+    probeSink = nullptr;
+  }
+
+  ComPtr<IMFMediaSource> source;
+  if (!ActivateSource(unknown.Get(), source.GetAddressOf(), error)) {
+    unknown.Reset();
+    FreeLibrary(module);
     return false;
   }
 
@@ -309,12 +411,11 @@ bool ProbeSourceClass(const std::wstring& dllPath,
 
   for (const Entry& entry : entries) {
     ComPtr<IUnknown> probe;
-    HRESULT probeHr = unknown->QueryInterface(entry.iid, &probe);
+    HRESULT probeHr = source->QueryInterface(entry.iid, &probe);
     results->push_back({entry.name, static_cast<int32_t>(probeHr)});
   }
 
-  ComPtr<IMFMediaSource> source;
-  if (SUCCEEDED(unknown.As(&source))) source->Shutdown();
+  source->Shutdown();
 
   // Release everything before unloading, or the DLL is freed out from under
   // objects that still exist.
@@ -343,10 +444,9 @@ bool CaptureFromDll(const std::wstring& dllPath, uint32_t timeoutMs,
   }
 
   ComPtr<IMFMediaSource> source;
-  if (FAILED(unknown.As(&source))) {
+  if (!ActivateSource(unknown.Get(), source.GetAddressOf(), error)) {
     unknown.Reset();
     FreeLibrary(module);
-    if (error) *error = L"The object is not a media source";
     return false;
   }
 

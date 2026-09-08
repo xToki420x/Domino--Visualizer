@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 
@@ -22,9 +23,57 @@ export interface VirtualCameraStatus {
   fps: number;
   framesWritten: number;
   registeredPath: string;
+  /**
+   * The registration points at *this* copy of Domino.
+   *
+   * Registration records a path, so an older install left registered keeps
+   * being the driver Windows loads. That shows up as a camera that opens and
+   * stays black, because the old DLL cannot read the current channel - worth
+   * telling the user about rather than letting them guess.
+   */
+  registeredIsThisBuild: boolean;
   /** Path a user would hand to regsvr32; empty when the DLL is missing. */
   sourcePath: string;
   error: string;
+}
+
+const digestCache = new Map<string, string>();
+
+/**
+ * Content hash of a file, cached against its size and modification time.
+ *
+ * Cheap enough to call on every status poll: the DLL is under 200KB, and the
+ * cache means it is normally not read at all.
+ */
+function digestOf(file: string): string {
+  try {
+    const stat = statSync(file);
+    const key = `${path.resolve(file).toLowerCase()}:${stat.size}:${stat.mtimeMs}`;
+    const cached = digestCache.get(key);
+    if (cached) return cached;
+
+    const digest = createHash('sha256').update(readFileSync(file)).digest('hex');
+    digestCache.set(key, digest);
+    return digest;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Is the registered driver the same binary this copy of Domino ships?
+ *
+ * Compared by content rather than by path on purpose. Registration records a
+ * path, and the same build legitimately lives at different paths - a developer
+ * run and the packaged copy beside it, say. What actually breaks a camera is a
+ * *different* build being registered, because an older DLL cannot read the
+ * current channel and the camera opens to black.
+ */
+function sameBinary(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()) return true;
+  const left = digestOf(a);
+  return left !== '' && left === digestOf(b);
 }
 
 interface NativeResult {
@@ -113,16 +162,19 @@ function load(): NativeAddon | null {
 export function getStatus(): VirtualCameraStatus {
   const native = load();
   const registration = native?.isRegistered() ?? { registered: false, path: '' };
+  const dll = sourceDllPath();
   return {
     available: native !== null,
     registered: registration.registered,
+    registeredIsThisBuild:
+      registration.registered && sameBinary(registration.path, dll),
     running,
     width,
     height,
     fps,
     framesWritten,
     registeredPath: registration.path,
-    sourcePath: sourceDllPath(),
+    sourcePath: dll,
     error: lastError || loadError,
   };
 }

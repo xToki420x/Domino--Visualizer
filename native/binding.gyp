@@ -74,6 +74,7 @@
       "sources": [
         "vcam/dllmain.cpp",
         "vcam/MediaSource.cpp",
+        "vcam/MediaSourceActivate.cpp",
         "vcam/MediaStream.cpp"
       ],
       "include_dirs": [

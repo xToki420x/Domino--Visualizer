@@ -160,6 +160,15 @@ const TOGGLES: ToggleSpec[] = [
 
 const GROUP_ORDER = ['Image', 'Camera', 'Virtual Camera', 'Quality', 'Playback'];
 
+/**
+ * Groups whose contents are built by hand rather than from the tables above.
+ *
+ * Without this a group made purely of custom controls is treated as empty and
+ * skipped entirely, which is how the virtual camera section came to exist in
+ * code and not on screen.
+ */
+const CUSTOM_GROUPS = new Set(['Virtual Camera']);
+
 const VCAM_SIZES = ['640x480', '1280x720', '1920x1080'];
 const VCAM_RATES = [24, 30, 60];
 
@@ -195,7 +204,9 @@ export class DisplayPanel {
     for (const group of GROUP_ORDER) {
       const controls = CONTROLS.filter((c) => c.group === group);
       const toggles = TOGGLES.filter((t) => t.group === group);
-      if (controls.length === 0 && toggles.length === 0) continue;
+      if (controls.length === 0 && toggles.length === 0 && !CUSTOM_GROUPS.has(group)) {
+        continue;
+      }
 
       const section = document.createElement('div');
       section.className = 'param-group';
@@ -248,7 +259,7 @@ export class DisplayPanel {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = Boolean(this.settings.virtualCameraEnabled);
-    input.disabled = !status?.available || !status?.registered;
+    input.disabled = !status?.available || !status?.registered || !status?.registeredIsThisBuild;
     input.addEventListener('change', () => this.onVirtualCamera?.(input.checked));
 
     row.append(label, input);
@@ -269,12 +280,15 @@ export class DisplayPanel {
     );
 
     // Registration is a one-time administrator step, so the button only shows
-    // when it is actually the thing standing in the way.
-    if (status?.available && !status.registered) {
+    // when it is actually the thing standing in the way - including when a
+    // different copy of Domino is the one currently registered.
+    if (status?.available && (!status.registered || !status.registeredIsThisBuild)) {
       const register = document.createElement('button');
       register.className = 'btn btn-ghost';
       register.style.width = '100%';
-      register.textContent = 'Register camera driver';
+      register.textContent = status.registered
+        ? 'Re-register camera driver'
+        : 'Register camera driver';
       register.title =
         'Runs regsvr32 as administrator. Windows will show its usual prompt.';
       register.addEventListener('click', () => this.onVirtualCameraRegister?.(false));
@@ -283,7 +297,7 @@ export class DisplayPanel {
 
     // Offered while it is registered so the machine can be left clean. The
     // uninstaller cannot do this itself: it does not run elevated.
-    if (status?.registered && !status.running) {
+    if (status?.registered && status.registeredIsThisBuild && !status.running) {
       const remove = document.createElement('button');
       remove.className = 'btn btn-ghost';
       remove.style.width = '100%';
@@ -311,6 +325,12 @@ export class DisplayPanel {
         'Windows loads the camera driver in its own process, which needs a ' +
           'one-time machine-wide registration. This asks for administrator ' +
           'rights once and never again.'
+      );
+    }
+    if (!status.registeredIsThisBuild) {
+      return (
+        'A different copy of Domino is registered as the camera driver ' +
+        `(${status.registeredPath}). Re-register to point Windows at this one.`
       );
     }
     if (status.error) return status.error;

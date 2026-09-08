@@ -21,7 +21,8 @@
     "gen:icon": "electron tools/make-icon.cjs",
     "test:import": "esbuild test/import.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/import.test.cjs --log-level=warning && node node_modules/.cache/import.test.cjs",
     "build:native": "node-gyp configure build --directory=native",
-    "test:native": "node test/native.test.cjs"
+    "test:native": "node test/native.test.cjs",
+    "test:vcam": "electron test/vcam.e2e.cjs"
   },
   "dependencies": {
     "monaco-editor": "^0.52.2"

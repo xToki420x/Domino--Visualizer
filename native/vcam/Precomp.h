@@ -52,14 +52,22 @@ class Lock {
 
 class Guard {
  public:
-  explicit Guard(Lock& lock) : lock_(lock) { lock_.Enter(); }
-  ~Guard() { lock_.Leave(); }
+  explicit Guard(Lock& lock) : lock_(&lock) { lock_->Enter(); }
+  ~Guard() { Release(); }
 
   Guard(const Guard&) = delete;
   Guard& operator=(const Guard&) = delete;
 
+  /** Unlock early, for the few places that must not hold two locks at once. */
+  void Release() {
+    if (lock_) {
+      lock_->Leave();
+      lock_ = nullptr;
+    }
+  }
+
  private:
-  Lock& lock_;
+  Lock* lock_;
 };
 
 }  // namespace domino

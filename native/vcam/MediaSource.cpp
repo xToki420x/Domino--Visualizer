@@ -2,6 +2,7 @@
 
 #include "FrameReader.h"
 #include "MediaStream.h"
+#include "Trace.h"
 
 namespace domino {
 
@@ -35,16 +36,21 @@ MediaSource::~MediaSource() {
   if (descriptor_) descriptor_->Release();
   if (attributes_) attributes_->Release();
   if (eventQueue_) eventQueue_->Release();
-  if (mfStarted_) MFShutdown();
   ModuleRelease();
 }
 
 HRESULT MediaSource::Initialize() {
   ModuleAddRef();
 
-  HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
-  if (FAILED(hr)) return hr;
-  mfStarted_ = true;
+  /*
+   * No MFStartup here, and above all no MFShutdown.
+   *
+   * This object lives inside a host we do not own - the Windows Frame Server,
+   * or a capture application. That host started Media Foundation before it
+   * ever reached us, and shutting it down when our last source is released
+   * would tear the platform out from under everything else the host is doing.
+   * A hosted media source uses the platform; it does not manage its lifetime.
+   */
 
   /*
    * Take the frame geometry from the live channel rather than hard-coding it.
@@ -73,7 +79,7 @@ HRESULT MediaSource::Initialize() {
     }
   }
 
-  hr = MFCreateEventQueue(&eventQueue_);
+  HRESULT hr = MFCreateEventQueue(&eventQueue_);
   if (FAILED(hr)) return hr;
 
   hr = MFCreateAttributes(&attributes_, 1);
@@ -90,7 +96,9 @@ HRESULT MediaSource::Initialize() {
 
   // The only stream, and it is always on: a camera with its single stream
   // deselected would be published and then produce nothing.
-  return descriptor_->SelectStream(0);
+  hr = descriptor_->SelectStream(0);
+  Trace("MediaSource::Initialize %ux%u -> 0x%08lX", width, height, hr);
+  return hr;
 }
 
 // --- IUnknown ---------------------------------------------------------------
@@ -109,6 +117,12 @@ IFACEMETHODIMP MediaSource::QueryInterface(REFIID riid, void** ppv) {
     *ppv = static_cast<IMFSampleAllocatorControl*>(this);
   } else {
     *ppv = nullptr;
+    // The interface Windows wanted and did not get is exactly the thing an
+    // E_NOINTERFACE from the Frame Server refuses to tell us.
+    Trace("QueryInterface REFUSED {%08lX-%04X-%04X-%02X%02X%02X%02X%02X%02X%02X%02X}",
+          riid.Data1, riid.Data2, riid.Data3, riid.Data4[0], riid.Data4[1],
+          riid.Data4[2], riid.Data4[3], riid.Data4[4], riid.Data4[5],
+          riid.Data4[6], riid.Data4[7]);
     return E_NOINTERFACE;
   }
   AddRef();
@@ -236,6 +250,7 @@ IFACEMETHODIMP MediaSource::Start(IMFPresentationDescriptor* pd,
 
   // Outside the lock: the stream queues its own started event, and its lock is
   // ordered below this one.
+  Trace("MediaSource::Start");
   HRESULT hr = stream->Start();
   stream->Release();
   if (FAILED(hr)) return hr;
@@ -309,11 +324,18 @@ IFACEMETHODIMP MediaSource::GetStreamAttributes(DWORD streamId,
   return stream_->GetAttributes(attributes);
 }
 
-IFACEMETHODIMP MediaSource::SetD3DManager(IUnknown* /*manager*/) {
-  // Frames arrive as system memory from another process, so there is nothing
-  // useful to do with a D3D device. Saying so plainly makes the Frame Server
-  // keep us on the system-memory path rather than expecting GPU surfaces.
-  return E_NOTIMPL;
+IFACEMETHODIMP MediaSource::SetD3DManager(IUnknown* manager) {
+  /*
+   * Accepted, and then ignored.
+   *
+   * We have no use for a D3D device - frames arrive as system memory from
+   * another process - but refusing this contradicts telling the host we will
+   * take its allocator, and the negotiation stalls there. Whatever buffers the
+   * allocator hands back, D3D-backed or not, are filled through IMF2DBuffer2,
+   * which maps either kind.
+   */
+  Trace("SetD3DManager(%p)", manager);
+  return S_OK;
 }
 
 // --- IMFGetService ----------------------------------------------------------
@@ -327,14 +349,28 @@ IFACEMETHODIMP MediaSource::GetService(REFGUID /*service*/, REFIID /*riid*/,
 // --- IMFSampleAllocatorControl ----------------------------------------------
 //
 // The Frame Server asks every software camera source how its samples are
-// allocated before it will start the camera. Answering honestly - we build our
-// own buffers around the shared-memory frame - keeps it from handing us an
-// allocator whose surfaces we have no way to fill.
+// allocated before it will start the camera, then hands one over. Taking it is
+// what makes frames reach other processes: buffers we allocate ourselves live
+// in this process only, and are dropped on the way out.
 
-IFACEMETHODIMP MediaSource::SetDefaultAllocator(DWORD /*outputStreamId*/,
-                                                IUnknown* /*allocator*/) {
-  // Nothing to accept: frames arrive as system memory from another process.
-  return E_NOTIMPL;
+IFACEMETHODIMP MediaSource::SetDefaultAllocator(DWORD outputStreamId,
+                                                IUnknown* allocator) {
+  Guard guard(lock_);
+  HRESULT hr = CheckShutdown();
+  if (FAILED(hr)) return hr;
+  if (outputStreamId != 0) return MF_E_INVALIDSTREAMNUMBER;
+
+  MediaStream* stream = stream_;
+  stream->AddRef();
+  guard.Release();
+
+  // The stream lock is taken inside SetAllocator, so the source lock is
+  // dropped first: holding both is the one place these two locks could be
+  // acquired in opposite orders on different threads.
+  Trace("SetDefaultAllocator");
+  HRESULT result = stream->SetAllocator(allocator);
+  stream->Release();
+  return result;
 }
 
 IFACEMETHODIMP MediaSource::GetAllocatorUsage(DWORD outputStreamId,
@@ -347,7 +383,11 @@ IFACEMETHODIMP MediaSource::GetAllocatorUsage(DWORD outputStreamId,
   if (outputStreamId != 0) return MF_E_INVALIDSTREAMNUMBER;
 
   *inputStreamId = 0;
-  *usage = MFSampleAllocatorUsage_UsesCustomAllocator;
+  // We take the host allocator when it offers one. Claiming a custom allocator
+  // instead tells the Frame Server our buffers are ours to manage, and it then
+  // has nothing it can share with the application that opened the camera.
+  *usage = MFSampleAllocatorUsage_UsesProvidedAllocator;
+  Trace("GetAllocatorUsage -> UsesProvidedAllocator");
   return S_OK;
 }
 

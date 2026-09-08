@@ -48,6 +48,16 @@ class MediaStream : public IMFMediaStream2 {
   IMFStreamDescriptor* Descriptor() const { return descriptor_; }
   HRESULT GetAttributes(IMFAttributes** attributes);
 
+  /**
+   * Adopt the allocator the host handed us.
+   *
+   * A stream marked FRAMESERVER_SHARED has its frames passed on to other
+   * processes. The Frame Server can only do that with buffers it allocated
+   * itself, so samples built on our own heap are collected and dropped - which
+   * looks exactly like a camera that is running and shows nothing.
+   */
+  HRESULT SetAllocator(IUnknown* allocator);
+
  private:
   MediaStream() = default;
   ~MediaStream();
@@ -70,18 +80,30 @@ class MediaStream : public IMFMediaStream2 {
   IMFMediaEventQueue* eventQueue_ = nullptr;
   IMFStreamDescriptor* descriptor_ = nullptr;
   IMFMediaType* mediaType_ = nullptr;
+  IMFVideoSampleAllocator* allocator_ = nullptr;
 
   uint32_t width_ = 0;
   uint32_t height_ = 0;
   uint32_t frameBytes_ = 0;
   LONGLONG frameDuration100ns_ = 0;
 
+  /*
+   * Guards everything below it.
+   *
+   * Frame production deliberately runs outside `lock_` so that a Stop() never
+   * has to wait on the visualiser, but the reader and its scratch buffer are
+   * still shared: RequestSample uses them on a Frame Server thread while
+   * Stop() closes them on another. A second lock keeps that safe without
+   * putting Stop() back behind a frame wait it might never get.
+   */
+  Lock readerLock_;
   FrameReader reader_;
   uint32_t lastHeartbeat_ = 0;
   BYTE* scratch_ = nullptr;   // holds the most recent frame we managed to read
   bool scratchValid_ = false;
 
   LONGLONG startTime100ns_ = 0;
+  uint32_t requestCount_ = 0;
   MF_STREAM_STATE state_ = MF_STREAM_STATE_STOPPED;
   bool shutdown_ = false;
 };

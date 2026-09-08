@@ -86,7 +86,6 @@ class MediaSource : public IMFMediaSourceEx,
   IMFAttributes* attributes_ = nullptr;
   MediaStream* stream_ = nullptr;
 
-  bool mfStarted_ = false;
   bool shutdown_ = false;
   bool streamAnnounced_ = false;
 };
