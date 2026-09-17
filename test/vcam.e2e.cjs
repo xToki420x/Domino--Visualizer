@@ -174,6 +174,21 @@ app.whenReady().then(async () => {
     return;
   }
 
+  /*
+   * Turning the camera on talks to the Windows camera service and can retry,
+   * so it takes a moment. What must not happen is the application stopping
+   * while it does - that work belongs off the main thread, and this is the
+   * check that keeps it there.
+   */
+  let startStall = 0;
+  const stallWatch = setInterval(() => {}, 100);
+  let lastTick = Date.now();
+  const stallTimer = setInterval(() => {
+    const gap = Date.now() - lastTick;
+    lastTick = Date.now();
+    if (gap > startStall) startStall = gap;
+  }, 100);
+
   const toggled = await win.webContents.executeJavaScript(ENABLE_CAMERA);
   check('the Publish as Webcam control exists', toggled.found === true);
   check('the control is enabled once the driver is registered', toggled.disabled !== true);
@@ -198,7 +213,15 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
+  clearInterval(stallWatch);
+  clearInterval(stallTimer);
   info('publishing', `${status.width}x${status.height} @ ${status.fps}fps, ${status.framesWritten} frames sent`);
+  info('worst main-thread stall while starting', `${startStall}ms`);
+  check(
+    'turning the camera on does not block the main thread',
+    startStall < 750,
+    `a ${startStall}ms stall on a 100ms timer`,
+  );
 
   const cameras = await win.webContents.executeJavaScript(
     'window.domino.virtualCamera.listCameras()',

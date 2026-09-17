@@ -15,6 +15,7 @@ import {
   serializeShaderProject,
 } from '../src/renderer/shadertoy/ShaderDocument';
 import { buildFragmentShader, detectStyle } from '../src/renderer/shadertoy/preamble';
+import { detectLanguage, translateShaderHlsl } from '../src/renderer/shadertoy/hlsl';
 
 let passed = 0;
 let failed = 0;
@@ -172,6 +173,61 @@ eq('prologueLines points at the first user line', userFirstLine,
 const complete = buildFragmentShader('#version 300 es\nvoid main() {}');
 eq('complete shaders get no prologue', complete.prologueLines, 0);
 eq('complete shaders are untouched', complete.source, '#version 300 es\nvoid main() {}');
+
+/* ------------------------------- HLSL ----------------------------------- */
+
+eq('plain GLSL is not mistaken for HLSL',
+  detectLanguage('void mainImage(out vec4 o, in vec2 u) { o = vec4(1.0); }'), 'glsl');
+eq('HLSL types are detected',
+  detectLanguage('void mainImage(out float4 o, float2 u) { o = float4(1,0,0,1); }'), 'hlsl');
+eq('an explicit directive wins over detection',
+  detectLanguage('//! language = hlsl\nvoid mainImage(out vec4 o, in vec2 u) {}'), 'hlsl');
+// `saturate` is not a GLSL builtin, so without the directive this would read as
+// HLSL; a shader that defines its own has to be able to say otherwise.
+eq('GLSL can be forced even when it looks like HLSL',
+  detectLanguage('//! language = glsl\nfloat saturate(float x){return x;}'), 'glsl');
+eq('a commented HLSL type does not trigger detection',
+  detectLanguage('// float4 old = ...\nvoid mainImage(out vec4 o, in vec2 u) {}'), 'glsl');
+
+const hlsl = translateShaderHlsl(
+  [
+    'void mainImage(out float4 fragColor, float2 fragCoord) {',
+    '  float2 uv = fragCoord / iResolution.xy;',
+    '  float3 c = lerp(float3(1,0,0), float3(0,0,1), frac(uv.x));',
+    '  c = saturate(c * 2.0);',
+    '  fragColor = float4(c, 1.0);',
+    '}',
+  ].join('\n'),
+);
+check('HLSL vector types become GLSL', hlsl.glsl.includes('vec3 c = mix('), hlsl.glsl);
+check('lerp becomes mix', !hlsl.glsl.includes('lerp('));
+check('frac becomes fract', hlsl.glsl.includes('fract(uv.x)'));
+check('saturate is routed to a helper', hlsl.glsl.includes('saturate_('));
+check('the entry point survives translation',
+  hlsl.glsl.includes('void mainImage(out vec4 fragColor'), hlsl.glsl);
+
+const builtHlsl = buildFragmentShader(
+  [
+    'void mainImage(out float4 fragColor, float2 fragCoord) {',
+    '  fragColor = float4(saturate(fragCoord.x), 0.0, 0.0, 1.0);',
+    '}',
+  ].join('\n'),
+);
+eq('an HLSL shader is reported as HLSL', builtHlsl.language, 'hlsl');
+eq('an HLSL shader is still a Shadertoy-style shader', builtHlsl.style, 'shadertoy');
+check('the compatibility helpers are in the prologue',
+  builtHlsl.source.includes('float saturate_(float x)'));
+check('no HLSL type names survive into the generated GLSL',
+  !/\bfloat[234]\b/.test(builtHlsl.source));
+// The helpers live in the prologue precisely so this stays true.
+eq('prologueLines still points at the first user line',
+  builtHlsl.source.split('\n')[builtHlsl.prologueLines],
+  'void mainImage(out vec4 fragColor, vec2 fragCoord) {');
+
+// Matrix constructors are row-major in HLSL and column-major in GLSL; getting
+// this wrong spins every rotation in the shader the wrong way.
+const rot = translateShaderHlsl('float2x2 m = float2x2(a, b, c, d);');
+check('matrix constructors are transposed', rot.glsl.includes('mat2(a, c, b, d)'), rot.glsl);
 
 /* --------------------------- project round trip -------------------------- */
 

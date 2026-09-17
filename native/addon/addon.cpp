@@ -7,7 +7,10 @@
 #include <napi.h>
 #include <windows.h>
 
+#include <functional>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "CaptureProbe.h"
@@ -41,12 +44,65 @@ std::wstring Widen(const std::string& narrow) {
   return out;
 }
 
+/*
+ * Serialises camera operations.
+ *
+ * They no longer run on the JavaScript thread, so two of them can now be in
+ * flight at once - a start and a stop from a user clicking twice, say - and
+ * both touch the same channel and device.
+ */
+std::mutex g_operationMutex;
+
 /** Uniform { ok, error? } result, so the JS side never has to catch. */
 Napi::Object Result(Napi::Env env, bool ok, const std::wstring& error = {}) {
   Napi::Object obj = Napi::Object::New(env);
   obj.Set("ok", Napi::Boolean::New(env, ok));
   if (!ok) obj.Set("error", Napi::String::New(env, Narrow(error)));
   return obj;
+}
+
+/**
+ * Runs one blocking camera operation off the JavaScript thread.
+ *
+ * Every one of these waits on something outside our control: the camera thread,
+ * the Windows camera service, or - for registration - a UAC prompt sitting on
+ * screen until the user answers it. Called directly from an IPC handler they
+ * block Electron's main thread, which is to say they freeze the entire
+ * application, for up to a minute in the registration case. A promise costs
+ * nothing and removes the whole class of problem.
+ */
+class CameraWorker : public Napi::AsyncWorker {
+ public:
+  using Job = std::function<bool(std::wstring*)>;
+
+  CameraWorker(Napi::Env env, Job job)
+      : Napi::AsyncWorker(env),
+        job_(std::move(job)),
+        deferred_(Napi::Promise::Deferred::New(env)) {}
+
+  Napi::Promise Promise() { return deferred_.Promise(); }
+
+  void Execute() override {
+    std::lock_guard<std::mutex> lock(g_operationMutex);
+    ok_ = job_(&error_);
+  }
+
+  void OnOK() override { deferred_.Resolve(Result(Env(), ok_, error_)); }
+
+  void OnError(const Napi::Error& e) override { deferred_.Reject(e.Value()); }
+
+ private:
+  Job job_;
+  Napi::Promise::Deferred deferred_;
+  bool ok_ = false;
+  std::wstring error_;
+};
+
+/** Queue `job` and hand back the promise it will settle. */
+Napi::Value RunAsync(Napi::Env env, CameraWorker::Job job) {
+  auto* worker = new CameraWorker(env, std::move(job));
+  worker->Queue();
+  return worker->Promise();
 }
 
 Napi::Value RegisterSource(const Napi::CallbackInfo& info) {
@@ -67,9 +123,9 @@ Napi::Value RegisterSourceElevated(const Napi::CallbackInfo& info) {
   }
   const std::wstring path = Widen(info[0].As<Napi::String>().Utf8Value());
   const bool unregister = info.Length() > 1 && info[1].ToBoolean().Value();
-  std::wstring error;
-  return Result(env, domino::RegisterSourceElevated(path, unregister, &error),
-                error);
+  return RunAsync(env, [path, unregister](std::wstring* error) {
+    return domino::RegisterSourceElevated(path, unregister, error);
+  });
 }
 
 Napi::Value UnregisterSource(const Napi::CallbackInfo& info) {
@@ -153,31 +209,28 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
           ? Widen(info[3].As<Napi::String>().Utf8Value())
           : L"Domino";
 
-  std::wstring error;
-
-  // Shared memory first: the media source may be instantiated the instant the
-  // camera is published, and it should find a valid channel waiting.
-  if (!g_channel.Open(width, height, fps, 1, &error)) {
-    return Result(env, false, error);
-  }
-  g_channel.SetPublishing(true);
-  if (!g_camera.Start(name, &error)) {
-    g_channel.Close();
-    return Result(env, false, error);
-  }
-  return Result(env, true);
+  return RunAsync(env, [width, height, fps, name](std::wstring* error) {
+    // Shared memory first: the media source may be instantiated the instant
+    // the camera is published, and it should find a valid channel waiting.
+    if (!g_channel.Open(width, height, fps, 1, error)) return false;
+    g_channel.SetPublishing(true);
+    if (!g_camera.Start(name, error)) {
+      g_channel.Close();
+      return false;
+    }
+    return true;
+  });
 }
 
 Napi::Value Stop(const Napi::CallbackInfo& info) {
-  /*
-   * Pause rather than tear down. The device stays in everyone's camera list
-   * and the channel stays open at the size already negotiated; the source sees
-   * the cleared flag and switches to black.
-   */
-  g_channel.SetPublishing(false);
-  g_camera.Stop();
-  g_channel.Close();
-  return Result(info.Env(), true);
+  return RunAsync(info.Env(), [](std::wstring*) {
+    // Clear the flag before tearing anything down, so a consumer mid-read sees
+    // black rather than the last frame frozen on screen.
+    g_channel.SetPublishing(false);
+    g_camera.Stop();
+    g_channel.Close();
+    return true;
+  });
 }
 
 /** Take the device out of the camera list, orphans from older builds included. */
@@ -185,9 +238,11 @@ Napi::Value RemoveCamera(const Napi::CallbackInfo& info) {
   const std::wstring name = info.Length() > 0 && info[0].IsString()
                                 ? Widen(info[0].As<Napi::String>().Utf8Value())
                                 : L"Domino Visualizer";
-  g_camera.RemoveDevice(name);
-  g_channel.Close();
-  return Result(info.Env(), true);
+  return RunAsync(info.Env(), [name](std::wstring*) {
+    g_camera.RemoveDevice(name);
+    g_channel.Close();
+    return true;
+  });
 }
 
 Napi::Value IsRunning(const Napi::CallbackInfo& info) {

@@ -267,7 +267,7 @@ function extractShaderBody(source: string): string {
   return source.slice(start);
 }
 
-function translateBody(hlsl: string, warnings: string[]): string {
+export function translateHlslBody(hlsl: string, warnings: string[]): string {
   let src = extractShaderBody(hlsl);
 
   // Strip HLSL storage qualifiers GLSL has no use for.
@@ -356,7 +356,7 @@ function translateBody(hlsl: string, warnings: string[]): string {
  * Numeric literals like `.5` are legal in both languages, but HLSL's `1.f`
  * suffix is not valid GLSL.
  */
-function fixLiterals(src: string): string {
+export function fixHlslLiterals(src: string): string {
   return src.replace(/(\d)[fF]\b/g, '$1.0').replace(/(\d\.)[fF]\b/g, '$10');
 }
 
@@ -411,7 +411,7 @@ export const DEFAULT_COMP_HLSL = `shader_body {
 }`;
 
 function build(hlsl: string, varyings: string, warnings: string[]): TranslationResult {
-  const body = fixLiterals(translateBody(hlsl, warnings));
+  const body = fixHlslLiterals(translateHlslBody(hlsl, warnings));
 
   const prologue = `#version 300 es
 ${MILKDROP_UNIFORMS}${MILKDROP_HELPERS}${varyings}

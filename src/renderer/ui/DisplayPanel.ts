@@ -321,6 +321,20 @@ export class DisplayPanel {
       return status.error || 'This build of Domino has no virtual camera module.';
     }
     if (!status.registered) {
+      /*
+       * A recorded path that no longer exists is a different problem from
+       * never having registered, and by far the more confusing one: the camera
+       * simply does nothing, with no hint as to why. It happens after moving
+       * or reinstalling Domino, because the registration stores a path.
+       */
+      if (status.registeredPath) {
+        return (
+          'The registered camera driver is missing - Windows is pointed at ' +
+          `${status.registeredPath}, which no longer exists. This happens ` +
+          'after reinstalling or moving Domino. Re-register to point it at ' +
+          'this copy.'
+        );
+      }
       return (
         status.error ||
         'Windows loads the camera driver in its own process, which needs a ' +

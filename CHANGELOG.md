@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+
+**Fixes the app freezing.** Every camera operation ran on the thread that draws
+the interface, and each of them waits on something outside the process: the
+camera thread, the Windows camera service, or - for "Register camera driver" -
+a UAC prompt sitting on screen until you answer it. So the app stopped dead for
+as long as that took, up to a minute for registration. They now run off that
+thread and the interface keeps going. The test suite measures this: turning the
+camera on must not stall the main thread for more than a fraction of a second.
+
+**A missing camera driver now says so.** Registration records a *path*, so
+reinstalling or moving Domino leaves Windows pointed at a file that no longer
+exists - and the camera then does nothing at all, with no explanation. The
+panel now names the missing path and offers to re-register.
+
+**Shaders can be written in HLSL.** Add `//! language = hlsl` to a shader, or
+just write HLSL and let it be detected: `float4`, `lerp`, `frac`, `saturate`,
+`tex2D`, `atan2`, row-major `float2x2` matrices and `mul` all work, translated
+to GLSL before compiling. Compile errors still point at your own line. The
+translation reuses the same machinery that runs MilkDrop 2's HLSL shaders, so
+there is one implementation to keep correct rather than two. **HLSL Prism**
+ships as a worked example.
+
 ## 0.4.1
 
 **Fixes the camera producing no output.** Two separate causes, both of which

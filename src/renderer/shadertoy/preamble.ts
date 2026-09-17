@@ -1,3 +1,11 @@
+import {
+  HLSL_COMPAT,
+  detectLanguage,
+  translateShaderHlsl,
+  type ShaderLanguage,
+} from './hlsl';
+import { stripCommentsAndStrings } from './source';
+
 /**
  * The uniform block injected into every Shadertoy-style pass.
  *
@@ -100,40 +108,62 @@ export function detectStyle(source: string): ShaderStyle {
   return 'raw-main';
 }
 
-/**
- * Remove comments before pattern-matching, so a `// void mainImage(...)` note
- * doesn't change how we wrap the shader.
- */
-export function stripCommentsAndStrings(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
-}
+// Re-exported so existing importers keep working; it lives in ./source now so
+// that the HLSL front end can use it without importing this file back.
+export { stripCommentsAndStrings } from './source';
 
 export interface BuiltShader {
   source: string;
   /** Lines added above the user's code, for mapping compile errors back. */
   prologueLines: number;
   style: ShaderStyle;
+  /** The language the source was written in, after detection. */
+  language: ShaderLanguage;
+  /** Anything the HLSL translation had to approximate. */
+  warnings: string[];
 }
 
 export function buildFragmentShader(userSource: string): BuiltShader {
-  const style = detectStyle(userSource);
-
-  if (style === 'complete') {
-    return { source: userSource, prologueLines: 0, style };
+  /*
+   * HLSL is translated before anything else looks at the source, so style
+   * detection, the epilogue and compile-error line mapping all operate on GLSL
+   * and need no knowledge that the user wrote something else.
+   */
+  const language = detectLanguage(userSource);
+  const warnings: string[] = [];
+  let source = userSource;
+  if (language === 'hlsl') {
+    const translated = translateShaderHlsl(userSource);
+    source = translated.glsl;
+    warnings.push(...translated.warnings);
   }
 
-  const prologue = `#version 300 es\n${SHADERTOY_UNIFORMS}`;
+  const style = detectStyle(source);
+
+  if (style === 'complete') {
+    return { source, prologueLines: 0, style, language, warnings };
+  }
+
+  // The HLSL compatibility helpers go in the prologue rather than being
+  // appended to the user's code, so `prologueLines` still counts every line
+  // above it and errors land on the right line.
+  const prologue =
+    language === 'hlsl'
+      ? `#version 300 es\n${SHADERTOY_UNIFORMS}\n${HLSL_COMPAT}`
+      : `#version 300 es\n${SHADERTOY_UNIFORMS}`;
   const needsOutput = style === 'shadertoy';
 
   // A raw-main shader declares its own `out`, so only the mainImage path gets
   // our output variable and generated main().
   const body = needsOutput
-    ? `${prologue}\n${userSource}\n${MAIN_IMAGE_EPILOGUE}`
-    : `${prologue}\n${userSource}`;
+    ? `${prologue}\n${source}\n${MAIN_IMAGE_EPILOGUE}`
+    : `${prologue}\n${source}`;
 
   return {
     source: body,
     prologueLines: prologue.split('\n').length,
     style,
+    language,
+    warnings,
   };
 }

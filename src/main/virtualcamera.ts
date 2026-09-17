@@ -85,7 +85,14 @@ interface NativeResult {
 
 interface NativeAddon {
   registerSource(dllPath: string): NativeResult;
-  registerSourceElevated(dllPath: string, unregister: boolean): NativeResult;
+  /*
+   * The four below resolve a promise instead of returning.
+   *
+   * Each waits on something outside the process - the camera thread, the
+   * Windows camera service, or a UAC prompt the user has not answered yet -
+   * and running any of them inline froze the whole app for as long as it took.
+   */
+  registerSourceElevated(dllPath: string, unregister: boolean): Promise<NativeResult>;
   unregisterSource(): NativeResult;
   isRegistered(): { registered: boolean; path: string };
   start(
@@ -93,9 +100,9 @@ interface NativeAddon {
     height: number,
     fps: number,
     name: string,
-  ): NativeResult;
-  stop(): NativeResult;
-  removeCamera(name: string): NativeResult;
+  ): Promise<NativeResult>;
+  stop(): Promise<NativeResult>;
+  removeCamera(name: string): Promise<NativeResult>;
   isRunning(): boolean;
   writeFrame(frame: Buffer): NativeResult;
   listCameras(): string[];
@@ -199,12 +206,12 @@ export function getStatus(): VirtualCameraStatus {
   };
 }
 
-export function start(
+export async function start(
   requestedWidth: number,
   requestedHeight: number,
   requestedFps: number,
   name: string,
-): VirtualCameraStatus {
+): Promise<VirtualCameraStatus> {
   const native = load();
   lastError = '';
   if (!native) return getStatus();
@@ -231,17 +238,19 @@ export function start(
    * published and Domino producing, consumers get zero frames. See the note on
    * VirtualCamera::Start.
    */
-  const result = native.start(width, height, fps, name || 'Domino');
+  const result = await native.start(width, height, fps, name || 'Domino');
   running = result.ok;
   framesWritten = 0;
   if (!result.ok) lastError = result.error ?? 'The virtual camera would not start.';
   return getStatus();
 }
 
-export function stop(): VirtualCameraStatus {
+export async function stop(): Promise<VirtualCameraStatus> {
   const native = load();
-  if (native) native.stop();
+  // Cleared first: the renderer must stop handing us frames for a camera that
+  // is on its way out, whatever the teardown itself takes.
   running = false;
+  if (native) await native.stop();
   return getStatus();
 }
 
@@ -271,7 +280,7 @@ export function writeFrame(frame: Buffer): void {
  * at startup: it writes a machine-wide COM registration, and an app that
  * quietly asks for elevation the first time it runs has earned suspicion.
  */
-export function register(unregister = false): VirtualCameraStatus {
+export async function register(unregister = false): Promise<VirtualCameraStatus> {
   const native = load();
   lastError = '';
   if (!native) return getStatus();
@@ -288,11 +297,11 @@ export function register(unregister = false): VirtualCameraStatus {
    * then served black frames to anything that selected it.
    */
   if (unregister) {
-    native.removeCamera('Domino Visualizer');
     running = false;
+    await native.removeCamera('Domino Visualizer');
   }
 
-  const result = native.registerSourceElevated(dll, unregister);
+  const result = await native.registerSourceElevated(dll, unregister);
   if (!result.ok) lastError = result.error ?? 'Registration did not complete.';
   return getStatus();
 }
@@ -302,7 +311,16 @@ export function listCameras(): string[] {
   return native ? native.listCameras() : [];
 }
 
-/** Stop publishing when the app quits, so no camera is left behind. */
+/**
+ * Stop publishing when the app quits.
+ *
+ * Not awaited, and it does not need to be: the device has session lifetime, so
+ * Windows removes it when this process goes away regardless. Blocking `quit`
+ * on a teardown that talks to a service is how an app ends up appearing to
+ * hang on exit.
+ */
 export function shutdown(): void {
-  if (running) stop();
+  if (!running) return;
+  running = false;
+  void stop().catch(() => undefined);
 }
