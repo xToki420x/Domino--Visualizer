@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.3
+## 0.5.4
 
 **Fixes the app freezing.** Every camera operation ran on the thread that draws
 the interface, and each of them waits on something outside the process: the
