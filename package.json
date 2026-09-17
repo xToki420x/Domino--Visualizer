@@ -1,9 +1,17 @@
 {
   "name": "domino",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Domino - a music visualizer that listens to everything your computer plays. Shadertoy-class shader editing and a from-scratch MilkDrop engine.",
   "author": "Jesse",
   "license": "MIT",
+  "homepage": "https://github.com/xToki420x/Domino--Visualizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xToki420x/Domino--Visualizer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xToki420x/Domino--Visualizer/issues"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -102,7 +110,7 @@
       "artifactName": "Domino-${version}-portable.${ext}"
     },
     "linux": {
-      "icon": "build/icon.ico",
+      "icon": "build/icon.png",
       "category": "AudioVideo",
       "synopsis": "Music visualizer with Shadertoy shaders and a MilkDrop engine",
       "description": "Domino listens to everything your computer plays and visualizes it, with live Shadertoy-compatible shader editing and a from-scratch MilkDrop engine.",
@@ -141,15 +149,15 @@
     "deb": {
       "artifactName": "domino_${version}_amd64.${ext}",
       "depends": [
-        "libgtk-3-0",
+        "libgtk-3-0 | libgtk-3-0t64",
         "libnotify4",
         "libnss3",
         "libxss1",
         "libxtst6",
         "xdg-utils",
-        "libatspi2.0-0",
+        "libatspi2.0-0 | libatspi2.0-0t64",
         "libuuid1",
-        "libasound2"
+        "libasound2 | libasound2t64"
       ]
     },
     "pacman": {

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1
+## 0.5.2
 
 **Fixes the app freezing.** Every camera operation ran on the thread that draws
 the interface, and each of them waits on something outside the process: the
@@ -16,7 +16,8 @@ exists - and the camera then does nothing at all, with no explanation. The
 panel now names the missing path and offers to re-register.
 
 **Linux builds.** AppImage for any distribution, `.deb` for Debian and Ubuntu,
-`.pacman` for Arch. System audio there comes from a PulseAudio or PipeWire
+`.pacman` for Arch — all three built and the AppImage run on a real Linux
+machine, not just assumed to work. System audio there comes from a PulseAudio or PipeWire
 monitor source rather than Chromium's loopback tap, which is a Windows feature
 — Domino finds the monitor for you. Publishing *as* a webcam stays Windows-only
 for now and the panel says so rather than offering a control that cannot work;

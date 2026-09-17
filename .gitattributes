@@ -13,3 +13,7 @@
 # otherwise drown out the TypeScript the project actually is.
 resources/milk/** linguist-vendored
 resources/shaders/** linguist-language=GLSL
+# Shell scripts must keep LF endings wherever they are checked out:
+# bash reads a CRLF script as commands with a stray carriage return
+# appended, and fails in ways that point nowhere near the cause.
+*.sh text eol=lf

@@ -89,6 +89,14 @@ jobs:
           node-version: 22
           cache: npm
 
+      # bsdtar, for the Arch package. electron-builder's fpm writes a .pacman
+      # with it, and Debian-based images do not carry it. Arch itself cannot
+      # build this target either - fpm bundles a Ruby that wants libcrypt.so.1,
+      # which current Arch no longer ships - so a Debian-family runner with
+      # libarchive-tools is the one machine that can produce every package.
+      - name: Packaging prerequisites
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+
       - name: Install
         run: npm ci
 
@@ -125,9 +133,16 @@ jobs:
       - name: Verify packaged build
         run: |
           chmod +x release/*.AppImage
-          out=$(xvfb-run --auto-servernum ./release/*.AppImage --appimage-extract-and-run --selftest 2>&1 || true)
+          out=$(xvfb-run --auto-servernum ./release/*.AppImage --appimage-extract-and-run --no-sandbox --selftest 2>&1 || true)
           echo "$out"
           echo "$out" | grep -q 'SELFTEST PASSED'
+
+      # A package naming a dependency the distribution renamed is refused by
+      # apt outright, and nothing else in the build would notice.
+      - name: Package dependencies resolve
+        run: bash tools/linux-deps-check.sh
+        env:
+          WORK: ${{ github.workspace }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

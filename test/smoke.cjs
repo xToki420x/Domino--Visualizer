@@ -14,6 +14,19 @@
  * difference.
  */
 const { app, BrowserWindow } = require('electron');
+
+/*
+ * Continuous integration runs this on a machine with no display, no GPU and no
+ * usable Chromium sandbox: Electron installed from npm ships `chrome-sandbox`
+ * without the setuid bit, and refuses to start rather than run unsandboxed by
+ * accident. These switches are set only under CI so a developer's run keeps
+ * every protection it normally has.
+ */
+if (process.env.CI) {
+  app.commandLine.appendSwitch('no-sandbox');
+  // Containers give /dev/shm 64MB, which Chromium exhausts and then crashes.
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
+}
 const path = require('node:path');
 const fs = require('node:fs');
 
