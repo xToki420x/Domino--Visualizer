@@ -16,10 +16,22 @@ Grab the latest **[Release](../../releases)** and pick one:
 
 | File | What it is |
 |---|---|
-| `Domino-Setup-x.y.z.exe` | Installer. Start-menu and desktop shortcuts, uninstall entry, installs per-user so it needs no admin rights. |
-| `Domino-x.y.z-portable.exe` | Single file. Run it, no install. Good for a USB stick. |
+| `Domino-Setup-x.y.z.exe` | Windows installer. Start-menu and desktop shortcuts, uninstall entry, installs per-user so it needs no admin rights. |
+| `Domino-x.y.z-portable.exe` | Windows, single file. Run it, no install. Good for a USB stick. |
+| `Domino-x.y.z-x86_64.AppImage` | Linux, any distribution. `chmod +x` it and run. |
+| `domino_x.y.z_amd64.deb` | Debian, Ubuntu and derivatives. |
+| `domino-x.y.z-x86_64.pacman` | Arch and derivatives. |
 
-Windows 10/11, 64-bit. Any GPU from the last decade will do — it needs WebGL2.
+Windows 10/11 or Linux, 64-bit. Any GPU from the last decade will do — it needs
+WebGL2.
+
+**On Linux**, system audio comes from a PulseAudio or PipeWire *monitor*
+source, which is the output mix as an input device; Domino finds it for you.
+The first time you click **System Audio** the browser engine asks for
+microphone permission — that is how monitor sources are reached, and nothing is
+recorded from an actual microphone. Publishing Domino *as* a webcam is
+Windows-only for now: that needs a v4l2loopback device, which is a separate
+piece of work.
 
 > **SmartScreen warning:** the builds are unsigned, so Windows will show
 > "Windows protected your PC" the first time. Click **More info → Run anyway**.
@@ -33,7 +45,8 @@ npm install
 npm run dev         # development, with hot reload
 npm run build       # production build into out/
 npm start           # run the production build
-npm run dist:win    # package installer + portable exe into release/
+npm run dist:win    # package Windows installer + portable exe into release/
+npm run dist:linux  # package AppImage, .deb and .pacman into release/
 npm run gen:presets # regenerate the generated preset families
 npm run gen:icon    # regenerate build/icon.ico
 ```

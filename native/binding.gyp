@@ -1,5 +1,16 @@
 {
-  "targets": [
+  # Windows only, deliberately.
+  #
+  # Both of these are Media Foundation and Win32 from top to bottom, so there
+  # is nothing to build elsewhere - and an empty target list is what lets
+  # `npm run build:native` succeed on Linux rather than failing the whole
+  # install over a feature that platform does not have.
+  "targets": [],
+  "conditions": [
+    [
+      "OS=='win'",
+      {
+        "targets": [
     {
       "target_name": "domino_vcam",
       "sources": [
@@ -120,5 +131,8 @@
         ]
       ]
     }
+  ]
+      }
+    ]
   ]
 }

@@ -3,8 +3,8 @@ name: Release
 # Push a version tag to cut a release:
 #   npm version patch && git push --follow-tags
 #
-# The workflow builds the Windows installer and portable exe, verifies the
-# packaged binary actually runs, and attaches both to a GitHub Release.
+# The workflow builds Windows and Linux packages, verifies each packaged binary
+# actually runs, and attaches them all to a GitHub Release.
 on:
   push:
     tags:
@@ -97,3 +97,72 @@ jobs:
           files: |
             release/Domino-Setup-*.exe
             release/Domino-*-portable.exe
+
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # There is nothing to compile here - the virtual camera is Media
+      # Foundation and Win32 throughout - but this must still succeed, because
+      # a gyp file that fails on Linux would break `npm install` for every
+      # Linux contributor.
+      - name: Native modules are a no-op here
+        run: npm run build:native
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # No display on the runner, and Electron needs one. xvfb gives it a
+      # virtual framebuffer; the GL work still runs, on SwiftShader.
+      - name: Smoke test
+        run: xvfb-run --auto-servernum npm run test:smoke
+        env:
+          DOMINO_SMOKE_NO_AUDIO: '1'
+
+      - name: Package
+        run: npx electron-builder --linux --publish never
+
+      # Same reasoning as the Windows job: packaging changes where the bundled
+      # library is found, so the shipped binary is verified, not the dev build.
+      - name: Verify packaged build
+        run: |
+          chmod +x release/*.AppImage
+          out=$(xvfb-run --auto-servernum ./release/*.AppImage --appimage-extract-and-run --selftest 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q 'SELFTEST PASSED'
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: domino-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.pacman
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            release/*.AppImage
+            release/*.deb
+            release/*.pacman

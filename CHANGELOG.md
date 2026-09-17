@@ -15,6 +15,13 @@ reinstalling or moving Domino leaves Windows pointed at a file that no longer
 exists - and the camera then does nothing at all, with no explanation. The
 panel now names the missing path and offers to re-register.
 
+**Linux builds.** AppImage for any distribution, `.deb` for Debian and Ubuntu,
+`.pacman` for Arch. System audio there comes from a PulseAudio or PipeWire
+monitor source rather than Chromium's loopback tap, which is a Windows feature
+— Domino finds the monitor for you. Publishing *as* a webcam stays Windows-only
+for now and the panel says so rather than offering a control that cannot work;
+the Linux equivalent needs a v4l2loopback device.
+
 **Shaders can be written in HLSL.** Add `//! language = hlsl` to a shader, or
 just write HLSL and let it be detected: `float4`, `lerp`, `frac`, `saturate`,
 `tex2D`, `atan2`, row-major `float2x2` matrices and `mul` all work, translated

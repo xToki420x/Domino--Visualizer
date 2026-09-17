@@ -209,6 +209,21 @@ export class AudioEngine {
    * running on its own and we avoid paying for screen capture.
    */
   async captureSystemAudio(): Promise<void> {
+    /*
+     * Linux takes a different route.
+     *
+     * `audio: 'loopback'` is Chromium's WASAPI render-endpoint tap, and it is
+     * a Windows feature. PulseAudio and PipeWire instead expose the output mix
+     * as ordinary *monitor* input devices - "Monitor of Built-in Audio", and
+     * so on - which is both more reliable here and closer to what a Linux user
+     * expects. Falling through to getDisplayMedia on Linux would raise a
+     * screen-picker and then hand back no audio at all.
+     */
+    if (window.domino.platform === 'linux') {
+      await this.captureMonitorSource();
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
@@ -231,6 +246,49 @@ export class AudioEngine {
         );
       }
 
+      this.attachStream(stream, 'loopback', 'System Audio');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.setStatus({ kind: 'none', label: 'System audio failed', active: false, error: message });
+      throw err;
+    }
+  }
+
+  /**
+   * Capture a PulseAudio/PipeWire monitor source: Linux's system-output tap.
+   *
+   * Device labels are empty until microphone permission has been granted once,
+   * so this asks for any input first and then re-enumerates. Without that step
+   * there is no way to tell a monitor from a real microphone, and picking the
+   * microphone would visualise the room instead of the music.
+   */
+  private async captureMonitorSource(): Promise<void> {
+    try {
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      if (!devices.some((d) => d.kind === 'audioinput' && d.label)) {
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+        for (const track of probe.getTracks()) track.stop();
+        devices = await navigator.mediaDevices.enumerateDevices();
+      }
+
+      const monitor = devices.find(
+        (d) => d.kind === 'audioinput' && /monitor/i.test(d.label),
+      );
+      if (!monitor) {
+        throw new Error(
+          'No monitor source found. PulseAudio and PipeWire expose one per ' +
+            'output; check that your sound server is running.',
+        );
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: monitor.deviceId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        } as MediaTrackConstraints,
+      });
       this.attachStream(stream, 'loopback', 'System Audio');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

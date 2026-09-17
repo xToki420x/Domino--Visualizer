@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux",
     "test:eel": "esbuild test/eel.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/eel.test.cjs --log-level=warning && node node_modules/.cache/eel.test.cjs",
     "test:milk": "esbuild test/milk.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/milk.test.cjs --log-level=warning && node node_modules/.cache/milk.test.cjs",
     "test:smoke": "electron test/smoke.cjs",
@@ -54,18 +55,24 @@
       {
         "from": "resources",
         "to": "resources"
-      },
-      {
-        "from": "native/build/Release",
-        "to": "native",
-        "filter": [
-          "domino_vcam.node",
-          "domino_vcam_source.dll"
-        ]
       }
     ],
     "win": {
       "icon": "build/icon.ico",
+      "extraResources": [
+        {
+          "from": "resources",
+          "to": "resources"
+        },
+        {
+          "from": "native/build/Release",
+          "to": "native",
+          "filter": [
+            "domino_vcam.node",
+            "domino_vcam_source.dll"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -93,6 +100,60 @@
     },
     "portable": {
       "artifactName": "Domino-${version}-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.ico",
+      "category": "AudioVideo",
+      "synopsis": "Music visualizer with Shadertoy shaders and a MilkDrop engine",
+      "description": "Domino listens to everything your computer plays and visualizes it, with live Shadertoy-compatible shader editing and a from-scratch MilkDrop engine.",
+      "maintainer": "Jesse <beertoki@gmail.com>",
+      "desktop": {
+        "entry": {
+          "Name": "Domino",
+          "Comment": "Music visualizer",
+          "Categories": "AudioVideo;Audio;Player;Graphics;"
+        }
+      },
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "pacman",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "appImage": {
+      "artifactName": "Domino-${version}-x86_64.${ext}"
+    },
+    "deb": {
+      "artifactName": "domino_${version}_amd64.${ext}",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libasound2"
+      ]
+    },
+    "pacman": {
+      "artifactName": "domino-${version}-x86_64.${ext}"
     },
     "publish": null
   },

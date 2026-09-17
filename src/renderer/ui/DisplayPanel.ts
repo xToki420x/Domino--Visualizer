@@ -266,24 +266,31 @@ export class DisplayPanel {
     row.append(label, input);
     section.appendChild(row);
 
-    section.appendChild(
-      this.buildChoice('Size', VCAM_SIZES, String(this.settings.virtualCameraSize), (v) =>
-        this.onChange?.({ virtualCameraSize: v }),
-      ),
-    );
-    section.appendChild(
-      this.buildChoice(
-        'Frame Rate',
-        VCAM_RATES.map((r) => String(r)),
-        String(this.settings.virtualCameraFps),
-        (v) => this.onChange?.({ virtualCameraFps: Number(v) }),
-      ),
-    );
+    const publishable = window.domino.platform === 'win32';
+    input.disabled = input.disabled || !publishable;
+
+    if (publishable) {
+      section.appendChild(
+        this.buildChoice('Size', VCAM_SIZES, String(this.settings.virtualCameraSize), (v) =>
+          this.onChange?.({ virtualCameraSize: v }),
+        ),
+      );
+    }
+    if (publishable) {
+      section.appendChild(
+        this.buildChoice(
+          'Frame Rate',
+          VCAM_RATES.map((r) => String(r)),
+          String(this.settings.virtualCameraFps),
+          (v) => this.onChange?.({ virtualCameraFps: Number(v) }),
+        ),
+      );
+    }
 
     // Registration is a one-time administrator step, so the button only shows
     // when it is actually the thing standing in the way - including when a
     // different copy of Domino is the one currently registered.
-    if (status?.available && (!status.registered || !status.registeredIsThisBuild)) {
+    if (publishable && status?.available && (!status.registered || !status.registeredIsThisBuild)) {
       const register = document.createElement('button');
       register.className = 'btn btn-ghost';
       register.style.width = '100%';
@@ -298,7 +305,7 @@ export class DisplayPanel {
 
     // Offered while it is registered so the machine can be left clean. The
     // uninstaller cannot do this itself: it does not run elevated.
-    if (status?.registered && status.registeredIsThisBuild && !status.running) {
+    if (publishable && status?.registered && status.registeredIsThisBuild && !status.running) {
       const remove = document.createElement('button');
       remove.className = 'btn btn-ghost';
       remove.style.width = '100%';
@@ -317,6 +324,21 @@ export class DisplayPanel {
   /** One line telling the user exactly where this stands, good or bad. */
   private virtualCameraNote(status: VirtualCameraStatus | null): string {
     if (!status) return 'Checking for the camera driver...';
+    /*
+     * Say the platform plainly rather than showing a generic failure. The
+     * camera is a Media Foundation source; the Linux equivalent is a
+     * v4l2loopback device, which is a different piece of work and not built
+     * yet - and a user deserves to know that rather than assume it is broken.
+     */
+    if (window.domino.platform === 'linux') {
+      return (
+        'Publishing as a webcam is Windows-only for now. On Linux this needs ' +
+        'a v4l2loopback device, which Domino does not create yet.'
+      );
+    }
+    if (window.domino.platform === 'darwin') {
+      return 'Publishing as a webcam is Windows-only for now.';
+    }
     if (!status.available) {
       return status.error || 'This build of Domino has no virtual camera module.';
     }
