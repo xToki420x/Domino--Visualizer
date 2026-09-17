@@ -1,6 +1,6 @@
 {
   "name": "domino",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Domino - a music visualizer that listens to everything your computer plays. Shadertoy-class shader editing and a from-scratch MilkDrop engine.",
   "author": "Jesse",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "test:eel": "esbuild test/eel.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/eel.test.cjs --log-level=warning && node node_modules/.cache/eel.test.cjs",
     "test:milk": "esbuild test/milk.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/milk.test.cjs --log-level=warning && node node_modules/.cache/milk.test.cjs",
     "test:smoke": "electron test/smoke.cjs",
+    "test:smoke:ci": "electron --no-sandbox --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader test/smoke.cjs",
     "test": "npm run test:eel && npm run test:milk && npm run test:shader && npm run test:import",
     "test:shader": "esbuild test/shader.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/shader.test.cjs --log-level=warning && node node_modules/.cache/shader.test.cjs",
     "gen:presets": "node tools/generate-presets.mjs",

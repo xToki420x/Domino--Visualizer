@@ -118,10 +118,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      # No display on the runner, and Electron needs one. xvfb gives it a
-      # virtual framebuffer; the GL work still runs, on SwiftShader.
+      # xvfb supplies the display Electron needs; the flags in test:smoke:ci
+      # supply the rest. They have to be real arguments to the binary rather
+      # than switches appended at runtime - by the time the app can append one,
+      # the sandbox and the GL stack have already been decided.
       - name: Smoke test
-        run: xvfb-run --auto-servernum npm run test:smoke
+        run: xvfb-run --auto-servernum npm run test:smoke:ci
         env:
           DOMINO_SMOKE_NO_AUDIO: '1'
 
@@ -133,7 +135,7 @@ jobs:
       - name: Verify packaged build
         run: |
           chmod +x release/*.AppImage
-          out=$(xvfb-run --auto-servernum ./release/*.AppImage --appimage-extract-and-run --no-sandbox --selftest 2>&1 || true)
+          out=$(xvfb-run --auto-servernum ./release/*.AppImage --appimage-extract-and-run                   --no-sandbox --use-gl=angle --use-angle=swiftshader                   --enable-unsafe-swiftshader --selftest 2>&1 || true)
           echo "$out"
           echo "$out" | grep -q 'SELFTEST PASSED'
 
