@@ -100,6 +100,11 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    # Sequential on purpose. Both jobs attach assets to the same Release, and
+    # two concurrent attempts to create it race - which is exactly what failed
+    # the Windows publish. This way the Windows job creates it and Linux adds
+    # to it.
+    needs: windows
 
     steps:
       - uses: actions/checkout@v4
@@ -119,7 +124,9 @@ jobs:
       # Foundation and Win32 throughout - but this must still succeed, because
       # a gyp file that fails on Linux would break `npm install` for every
       # Linux contributor.
-      - name: Native modules are a no-op here
+      # Skips, and must exit 0: the virtual camera is Windows-only, and a
+      # build script that fails here would break every Linux contributor.
+      - name: Native modules (skipped on Linux)
         run: npm run build:native
 
       - name: Unit tests

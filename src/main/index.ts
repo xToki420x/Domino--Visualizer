@@ -286,8 +286,13 @@ async function runSelfTest(win: BrowserWindow): Promise<void> {
      * Windows Server does not install by default - and failing a release
      * because the build agent has no media stack would be wrong.
      */
-    if (!camera.modulePath) problems.push('virtual camera module was not packaged');
-    if (!camera.sourcePath) problems.push('virtual camera driver was not packaged');
+    // Only on Windows: the virtual camera is a Media Foundation source, so
+    // there are deliberately no binaries to find anywhere else and their
+    // absence is correct rather than a packaging defect.
+    if (process.platform === 'win32') {
+      if (!camera.modulePath) problems.push('virtual camera module was not packaged');
+      if (!camera.sourcePath) problems.push('virtual camera driver was not packaged');
+    }
   } catch (err) {
     problems.push(`probe failed: ${(err as Error).message}`);
   }
